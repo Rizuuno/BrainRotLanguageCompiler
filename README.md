@@ -2,23 +2,6 @@
 
 A web-based compiler for BrainRotLanguage (BRL) built with Streamlit for CS Programming Languages Final Project.
 
-**NOW WITH MULTILINE SUPPORT!** 🚀
-
-## 🚀 Quick Start
-
-### Installation
-
-1. Install required dependencies:
-```bash
-pip install streamlit pandas
-```
-
-### Running the Compiler
-
-Run the Streamlit application:
-```bash
-streamlit run brl_compiler.py
-```
 ## 📖 Language Syntax
 
 ### Data Types

@@ -73,10 +73,3 @@ Prog_Lang_Final/
 ```
 
 
-**BrainRotLanguage Compiler v2.0**
-*CS Programming Languages Final Project*
-*Now with Multiline Support!*
-
-
-
-March 22, 2026 (Sunday) 11:59 PM

@@ -159,6 +159,5 @@ Prog_Lang_Final/
 *CS Programming Languages Final Project*
 *Now with Multiline Support!*
 
-## 📅 Deadline
 
 March 22, 2026 (Sunday) 11:59 PM

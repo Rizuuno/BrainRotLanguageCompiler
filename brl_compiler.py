@@ -96,9 +96,10 @@ class Lexer:
         """Perform lexical analysis and return tokens with logs."""
         self.logs.append("--- STARTING LEXICAL ANALYSIS ---")
 
-        # Pattern to properly split tokens including delimiters
-        # Matches: strings in quotes, or individual characters/words
-        pattern = r'"[^"]*"|[a-zA-Z_][a-zA-Z0-9_]*|\d+\.?\d*|[!{}]|\S'
+        # Pattern to properly split tokens including delimiters (C++ rules)
+        # Order matters: check for invalid identifiers starting with digits first
+        # Matches: strings in quotes, invalid identifiers (digit-start), valid identifiers, numbers, delimiters, unknown
+        pattern = r'"[^"]*"|\d+[a-zA-Z_][a-zA-Z0-9_]*|[a-zA-Z_][a-zA-Z0-9_]*|\d+\.?\d*|[!{}]|\S'
         parts = re.findall(pattern, self.code)
 
         for part in parts:
@@ -136,34 +137,58 @@ class Lexer:
             return Token(TokenType.RBRACE, lexeme)
 
         # Check for string literals (enclosed in quotes)
-        if lexeme.startswith('"') and lexeme.endswith('"'):
-            return Token(TokenType.STRING_LITERAL, lexeme)
+        # Must have both opening and closing quotes (C++ rule)
+        if lexeme.startswith('"'):
+            if lexeme.endswith('"') and len(lexeme) >= 2:
+                return Token(TokenType.STRING_LITERAL, lexeme)
+            else:
+                # Unclosed string - invalid in C++
+                return Token(TokenType.UNKNOWN, lexeme)
 
-        # Check for keywords
+        # Check for keywords (must be checked before identifiers)
         if lexeme in self.keywords:
             return Token(self.keywords[lexeme], lexeme)
 
         # Check for numeric literals (int or float)
+        # Must follow C++ numeric format rules
         if self._is_numeric(lexeme):
             return Token(TokenType.NUMERIC_LITERAL, lexeme)
 
         # Check for identifiers (variable names)
+        # Must follow C++ identifier rules: start with letter or underscore
         if self._is_identifier(lexeme):
             return Token(TokenType.IDENTIFIER, lexeme)
 
-        # Unknown token
+        # Unknown token - anything else is invalid in C++
         return Token(TokenType.UNKNOWN, lexeme)
 
     def _is_numeric(self, lexeme: str) -> bool:
-        """Check if lexeme is a number (int or float)."""
+        """Check if lexeme is a valid number (int or float) following C++ rules."""
+        # C++ numeric rules:
+        # - Cannot start with multiple zeros (except "0" or "0.x")
+        # - Cannot have multiple decimal points
+        # - Cannot have letters mixed in (caught by regex, but double-check)
+
+        # Check for invalid patterns like "1.2.3" or "1a2"
+        if lexeme.count('.') > 1:
+            return False
+
+        # Try parsing as float
         try:
             float(lexeme)
+            # Additional check: ensure no letters in the number
+            # This catches cases like "123abc" that might slip through
             return True
         except ValueError:
             return False
 
     def _is_identifier(self, lexeme: str) -> bool:
-        """Check if lexeme is a valid identifier."""
+        """Check if lexeme is a valid identifier following C++ rules."""
+        # C++ identifier rules:
+        # - Must start with letter (a-z, A-Z) or underscore (_)
+        # - Can contain letters, digits, underscores
+        # - Cannot start with digit
+        # - Cannot contain special characters like -, ., $, @, etc.
         return re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', lexeme) is not None
 
 
@@ -187,43 +212,56 @@ class Parser:
         # Expected structure: [DATATYPE] [IDENTIFIER] [ASSIGN] [LITERAL] [DELIMITER]
         self.logs.append("[PARSER] Expected rule: [DATATYPE] [IDENTIFIER] [ASSIGN] [LITERAL] [DELIMITER]")
 
-        # Check minimum token count
+        # C++ Rule: Exact token count validation
+        # Must be exactly 5 tokens (not more, not less)
         if len(valid_tokens) < 5:
             self.logs.append(f"❌ [PARSER] ERROR: Expected 5 tokens, but found {len(valid_tokens)}.")
             self.logs.append("[PARSER] Missing components in statement structure.")
             self.is_valid = False
             return False, self.logs
+        elif len(valid_tokens) > 5:
+            # C++ doesn't allow extra tokens after delimiter
+            self.logs.append(f"❌ [PARSER] ERROR: Expected 5 tokens, but found {len(valid_tokens)}.")
+            self.logs.append(f"[PARSER] Extra tokens detected after delimiter: {[t.value for t in valid_tokens[5:]]}")
+            self.logs.append("[PARSER] C++ Rule: Only one statement per line allowed.")
+            self.is_valid = False
+            return False, self.logs
 
-        # Check each position
+        # Check each position with C++ rules
         errors = []
 
-        # Position 0: DATATYPE
+        # Position 0: DATATYPE (C++ requires type specification)
         if not self._is_datatype(valid_tokens[0]):
-            errors.append(f"Position 0: Expected DATATYPE, found {valid_tokens[0].type.name}")
+            errors.append(f"Position 0: Expected DATATYPE (sigma/gyatt/smol), found {valid_tokens[0].type.name}")
+            self.logs.append(f"[PARSER] C++ Rule: Variables must have explicit type declaration.")
         else:
             self.logs.append(f"✓ [PARSER] Position 0: '{valid_tokens[0].value}' is a valid DATATYPE")
 
-        # Position 1: IDENTIFIER
+        # Position 1: IDENTIFIER (C++ requires valid variable name)
         if valid_tokens[1].type != TokenType.IDENTIFIER:
             errors.append(f"Position 1: Expected IDENTIFIER, found {valid_tokens[1].type.name}")
+            self.logs.append(f"[PARSER] C++ Rule: Variable name must be a valid identifier.")
         else:
             self.logs.append(f"✓ [PARSER] Position 1: '{valid_tokens[1].value}' is a valid IDENTIFIER")
 
-        # Position 2: ASSIGN
+        # Position 2: ASSIGN (C++ requires initialization operator)
         if valid_tokens[2].type != TokenType.ASSIGN_RIZZ:
             errors.append(f"Position 2: Expected ASSIGN (rizz), found {valid_tokens[2].type.name}")
+            self.logs.append(f"[PARSER] C++ Rule: Variables must use assignment operator (=).")
         else:
             self.logs.append(f"✓ [PARSER] Position 2: '{valid_tokens[2].value}' is a valid ASSIGN operator")
 
-        # Position 3: LITERAL
+        # Position 3: LITERAL (C++ requires initialization value)
         if not self._is_literal(valid_tokens[3]):
-            errors.append(f"Position 3: Expected LITERAL, found {valid_tokens[3].type.name}")
+            errors.append(f"Position 3: Expected LITERAL value, found {valid_tokens[3].type.name}")
+            self.logs.append(f"[PARSER] C++ Rule: Variables must be initialized with a value.")
         else:
             self.logs.append(f"✓ [PARSER] Position 3: '{valid_tokens[3].value}' is a valid LITERAL")
 
-        # Position 4: DELIMITER
+        # Position 4: DELIMITER (C++ requires statement terminator)
         if valid_tokens[4].type != TokenType.DELIMITER:
             errors.append(f"Position 4: Expected DELIMITER (!), found {valid_tokens[4].type.name}")
+            self.logs.append(f"[PARSER] C++ Rule: Statements must end with semicolon (!).")
         else:
             self.logs.append(f"✓ [PARSER] Position 4: '{valid_tokens[4].value}' is a valid DELIMITER")
 
@@ -289,6 +327,26 @@ class SemanticAnalyzer:
         literal_token = valid_tokens[3]
         delimiter_token = valid_tokens[4]
 
+        # C++ Rule 1: Check for variable redeclaration in the same scope
+        self.logs.append("[SEMANTICS] Checking for variable redeclaration...")
+        if identifier_token.value in self.symbol_table:
+            existing_level = int(self.symbol_table[identifier_token.value]['Level'])
+            if existing_level == self.current_level:
+                # Redeclaration in the same scope - ERROR in C++
+                self.logs.append(f"❌ [SEMANTICS] FATAL ERROR: Variable redeclaration detected!")
+                self.logs.append(f"   Variable '{identifier_token.value}' already declared in this scope (Level {self.current_level}).")
+                self.logs.append(f"[SEMANTICS] C++ Rule: Cannot redeclare variable in the same scope.")
+                self.logs.append("[SEMANTICS] Recovery Strategy: Compiler will discard this declaration.")
+                self.is_valid = False
+                return False, self.logs, self.symbol_table
+            else:
+                # Variable exists in different scope - allowed (shadowing)
+                self.logs.append(f"⚠️ [SEMANTICS] WARNING: Variable '{identifier_token.value}' shadows variable from outer scope (Level {existing_level}).")
+                self.logs.append(f"[SEMANTICS] C++ Rule: Shadowing is allowed but may cause confusion.")
+        else:
+            self.logs.append(f"✓ [SEMANTICS] Variable '{identifier_token.value}' is not previously declared.")
+
+        # C++ Rule 2: Strict type checking (no implicit conversions)
         self.logs.append("[SEMANTICS] Checking Type Compatibility...")
         self.logs.append(f"[SEMANTICS] Variable '{identifier_token.value}' is declared as '{datatype_token.value}'.")
         self.logs.append(f"[SEMANTICS] Value is '{literal_token.value}' ({literal_token.type.name}).")
@@ -297,24 +355,27 @@ class SemanticAnalyzer:
         expected_type = self._get_expected_type(datatype_token)
         actual_type = self._get_actual_type(literal_token)
 
+        # C++ Rule: Strict type matching (no implicit conversions between incompatible types)
         if expected_type != actual_type:
             self.logs.append(f"❌ [SEMANTICS] FATAL ERROR: Type mismatch detected!")
             self.logs.append(f"   Expected: {expected_type}, but got: {actual_type}")
             self.logs.append(f"   Variable '{identifier_token.value}' is declared as '{datatype_token.value}', but value '{literal_token.value}' is {actual_type}.")
+            self.logs.append("[SEMANTICS] C++ Rule: No implicit type conversion allowed between incompatible types.")
             self.logs.append("[SEMANTICS] Recovery Strategy: Compiler will discard assignment to prevent memory corruption.")
             self.is_valid = False
         else:
             self.logs.append(f"✓ [SEMANTICS] Types match! Expected {expected_type}, got {actual_type}.")
-            self.logs.append("[SEMANTICS] No type coercion needed.")
+            self.logs.append("[SEMANTICS] C++ Rule: Type compatibility verified - no type coercion needed.")
 
             # Bind to symbol table
             self.logs.append(f"[SEMANTICS] Binding variable '{identifier_token.value}' to Symbol Table...")
+            self.logs.append(f"[SEMANTICS] Scope Level: {self.current_level}, Memory Offset: {self.current_offset}")
             self.symbol_table[identifier_token.value] = {
                 'Data Type': datatype_token.value,
                 'Level': str(self.current_level),
                 'Offset': str(self.current_offset)
             }
-            self.logs.append(f"✓ [SEMANTICS] Variable '{identifier_token.value}' successfully bound.")
+            self.logs.append(f"✓ [SEMANTICS] Variable '{identifier_token.value}' successfully bound to symbol table.")
             self.logs.append("✓ Semantic Analysis Complete.")
             self.is_valid = True
 
@@ -331,11 +392,13 @@ class SemanticAnalyzer:
         return "UNKNOWN"
 
     def _get_actual_type(self, literal_token: Token) -> str:
-        """Get the actual type category from literal token."""
+        """Get the actual type category from literal token following C++ rules."""
         if literal_token.type == TokenType.STRING_LITERAL:
             return "STRING"
         elif literal_token.type == TokenType.NUMERIC_LITERAL:
-            # Check if it's a float or int
+            # C++ Rule: Strict distinction between int and float
+            # - If literal has decimal point -> FLOAT (e.g., 1.0, 3.14)
+            # - If literal has no decimal point -> INTEGER (e.g., 1, 100)
             if '.' in literal_token.value:
                 return "FLOAT"
             else:

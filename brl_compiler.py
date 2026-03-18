@@ -96,9 +96,10 @@ class Lexer:
         """Perform lexical analysis and return tokens with logs."""
         self.logs.append("--- STARTING LEXICAL ANALYSIS ---")
 
-        # Pattern to properly split tokens including delimiters
-        # Matches: strings in quotes, or individual characters/words
-        pattern = r'"[^"]*"|[a-zA-Z_][a-zA-Z0-9_]*|\d+\.?\d*|[!{}]|\S'
+        # Pattern to properly split tokens including delimiters (C++ rules)
+        # Order matters: check for invalid identifiers starting with digits first
+        # Matches: strings in quotes, invalid identifiers (digit-start), valid identifiers, numbers, delimiters, unknown
+        pattern = r'"[^"]*"|\d+[a-zA-Z_][a-zA-Z0-9_]*|[a-zA-Z_][a-zA-Z0-9_]*|\d+\.?\d*|[!{}]|\S'
         parts = re.findall(pattern, self.code)
 
         for part in parts:
@@ -136,34 +137,58 @@ class Lexer:
             return Token(TokenType.RBRACE, lexeme)
 
         # Check for string literals (enclosed in quotes)
-        if lexeme.startswith('"') and lexeme.endswith('"'):
-            return Token(TokenType.STRING_LITERAL, lexeme)
+        # Must have both opening and closing quotes (C++ rule)
+        if lexeme.startswith('"'):
+            if lexeme.endswith('"') and len(lexeme) >= 2:
+                return Token(TokenType.STRING_LITERAL, lexeme)
+            else:
+                # Unclosed string - invalid in C++
+                return Token(TokenType.UNKNOWN, lexeme)
 
-        # Check for keywords
+        # Check for keywords (must be checked before identifiers)
         if lexeme in self.keywords:
             return Token(self.keywords[lexeme], lexeme)
 
         # Check for numeric literals (int or float)
+        # Must follow C++ numeric format rules
         if self._is_numeric(lexeme):
             return Token(TokenType.NUMERIC_LITERAL, lexeme)
 
         # Check for identifiers (variable names)
+        # Must follow C++ identifier rules: start with letter or underscore
         if self._is_identifier(lexeme):
             return Token(TokenType.IDENTIFIER, lexeme)
 
-        # Unknown token
+        # Unknown token - anything else is invalid in C++
         return Token(TokenType.UNKNOWN, lexeme)
 
     def _is_numeric(self, lexeme: str) -> bool:
-        """Check if lexeme is a number (int or float)."""
+        """Check if lexeme is a valid number (int or float) following C++ rules."""
+        # C++ numeric rules:
+        # - Cannot start with multiple zeros (except "0" or "0.x")
+        # - Cannot have multiple decimal points
+        # - Cannot have letters mixed in (caught by regex, but double-check)
+
+        # Check for invalid patterns like "1.2.3" or "1a2"
+        if lexeme.count('.') > 1:
+            return False
+
+        # Try parsing as float
         try:
             float(lexeme)
+            # Additional check: ensure no letters in the number
+            # This catches cases like "123abc" that might slip through
             return True
         except ValueError:
             return False
 
     def _is_identifier(self, lexeme: str) -> bool:
-        """Check if lexeme is a valid identifier."""
+        """Check if lexeme is a valid identifier following C++ rules."""
+        # C++ identifier rules:
+        # - Must start with letter (a-z, A-Z) or underscore (_)
+        # - Can contain letters, digits, underscores
+        # - Cannot start with digit
+        # - Cannot contain special characters like -, ., $, @, etc.
         return re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', lexeme) is not None
 
 
@@ -187,43 +212,56 @@ class Parser:
         # Expected structure: [DATATYPE] [IDENTIFIER] [ASSIGN] [LITERAL] [DELIMITER]
         self.logs.append("[PARSER] Expected rule: [DATATYPE] [IDENTIFIER] [ASSIGN] [LITERAL] [DELIMITER]")
 
-        # Check minimum token count
+        # C++ Rule: Exact token count validation
+        # Must be exactly 5 tokens (not more, not less)
         if len(valid_tokens) < 5:
             self.logs.append(f"❌ [PARSER] ERROR: Expected 5 tokens, but found {len(valid_tokens)}.")
             self.logs.append("[PARSER] Missing components in statement structure.")
             self.is_valid = False
             return False, self.logs
+        elif len(valid_tokens) > 5:
+            # C++ doesn't allow extra tokens after delimiter
+            self.logs.append(f"❌ [PARSER] ERROR: Expected 5 tokens, but found {len(valid_tokens)}.")
+            self.logs.append(f"[PARSER] Extra tokens detected after delimiter: {[t.value for t in valid_tokens[5:]]}")
+            self.logs.append("[PARSER] C++ Rule: Only one statement per line allowed.")
+            self.is_valid = False
+            return False, self.logs
 
-        # Check each position
+        # Check each position with C++ rules
         errors = []
 
-        # Position 0: DATATYPE
+        # Position 0: DATATYPE (C++ requires type specification)
         if not self._is_datatype(valid_tokens[0]):
-            errors.append(f"Position 0: Expected DATATYPE, found {valid_tokens[0].type.name}")
+            errors.append(f"Position 0: Expected DATATYPE (sigma/gyatt/smol), found {valid_tokens[0].type.name}")
+            self.logs.append(f"[PARSER] C++ Rule: Variables must have explicit type declaration.")
         else:
             self.logs.append(f"✓ [PARSER] Position 0: '{valid_tokens[0].value}' is a valid DATATYPE")
 
-        # Position 1: IDENTIFIER
+        # Position 1: IDENTIFIER (C++ requires valid variable name)
         if valid_tokens[1].type != TokenType.IDENTIFIER:
             errors.append(f"Position 1: Expected IDENTIFIER, found {valid_tokens[1].type.name}")
+            self.logs.append(f"[PARSER] C++ Rule: Variable name must be a valid identifier.")
         else:
             self.logs.append(f"✓ [PARSER] Position 1: '{valid_tokens[1].value}' is a valid IDENTIFIER")
 
-        # Position 2: ASSIGN
+        # Position 2: ASSIGN (C++ requires initialization operator)
         if valid_tokens[2].type != TokenType.ASSIGN_RIZZ:
             errors.append(f"Position 2: Expected ASSIGN (rizz), found {valid_tokens[2].type.name}")
+            self.logs.append(f"[PARSER] C++ Rule: Variables must use assignment operator (=).")
         else:
             self.logs.append(f"✓ [PARSER] Position 2: '{valid_tokens[2].value}' is a valid ASSIGN operator")
 
-        # Position 3: LITERAL
+        # Position 3: LITERAL (C++ requires initialization value)
         if not self._is_literal(valid_tokens[3]):
-            errors.append(f"Position 3: Expected LITERAL, found {valid_tokens[3].type.name}")
+            errors.append(f"Position 3: Expected LITERAL value, found {valid_tokens[3].type.name}")
+            self.logs.append(f"[PARSER] C++ Rule: Variables must be initialized with a value.")
         else:
             self.logs.append(f"✓ [PARSER] Position 3: '{valid_tokens[3].value}' is a valid LITERAL")
 
-        # Position 4: DELIMITER
+        # Position 4: DELIMITER (C++ requires statement terminator)
         if valid_tokens[4].type != TokenType.DELIMITER:
             errors.append(f"Position 4: Expected DELIMITER (!), found {valid_tokens[4].type.name}")
+            self.logs.append(f"[PARSER] C++ Rule: Statements must end with semicolon (!).")
         else:
             self.logs.append(f"✓ [PARSER] Position 4: '{valid_tokens[4].value}' is a valid DELIMITER")
 
@@ -263,11 +301,13 @@ class Parser:
 # SEMANTIC ANALYZER CLASS - SEMANTIC ANALYSIS
 # ============================================================================
 class SemanticAnalyzer:
-    def __init__(self, tokens: List[Token]):
+    def __init__(self, tokens: List[Token], current_level: int = 0, current_offset: int = 0):
         self.tokens = tokens
         self.logs: List[str] = []
         self.symbol_table: Dict[str, Dict[str, str]] = {}
         self.is_valid = False
+        self.current_level = current_level
+        self.current_offset = current_offset
 
     def analyze(self) -> Tuple[bool, List[str], Dict[str, Dict[str, str]]]:
         """Perform semantic analysis and return validity with logs and symbol table."""
@@ -287,6 +327,26 @@ class SemanticAnalyzer:
         literal_token = valid_tokens[3]
         delimiter_token = valid_tokens[4]
 
+        # C++ Rule 1: Check for variable redeclaration in the same scope
+        self.logs.append("[SEMANTICS] Checking for variable redeclaration...")
+        if identifier_token.value in self.symbol_table:
+            existing_level = int(self.symbol_table[identifier_token.value]['Level'])
+            if existing_level == self.current_level:
+                # Redeclaration in the same scope - ERROR in C++
+                self.logs.append(f"❌ [SEMANTICS] FATAL ERROR: Variable redeclaration detected!")
+                self.logs.append(f"   Variable '{identifier_token.value}' already declared in this scope (Level {self.current_level}).")
+                self.logs.append(f"[SEMANTICS] C++ Rule: Cannot redeclare variable in the same scope.")
+                self.logs.append("[SEMANTICS] Recovery Strategy: Compiler will discard this declaration.")
+                self.is_valid = False
+                return False, self.logs, self.symbol_table
+            else:
+                # Variable exists in different scope - allowed (shadowing)
+                self.logs.append(f"⚠️ [SEMANTICS] WARNING: Variable '{identifier_token.value}' shadows variable from outer scope (Level {existing_level}).")
+                self.logs.append(f"[SEMANTICS] C++ Rule: Shadowing is allowed but may cause confusion.")
+        else:
+            self.logs.append(f"✓ [SEMANTICS] Variable '{identifier_token.value}' is not previously declared.")
+
+        # C++ Rule 2: Strict type checking (no implicit conversions)
         self.logs.append("[SEMANTICS] Checking Type Compatibility...")
         self.logs.append(f"[SEMANTICS] Variable '{identifier_token.value}' is declared as '{datatype_token.value}'.")
         self.logs.append(f"[SEMANTICS] Value is '{literal_token.value}' ({literal_token.type.name}).")
@@ -295,23 +355,27 @@ class SemanticAnalyzer:
         expected_type = self._get_expected_type(datatype_token)
         actual_type = self._get_actual_type(literal_token)
 
+        # C++ Rule: Strict type matching (no implicit conversions between incompatible types)
         if expected_type != actual_type:
             self.logs.append(f"❌ [SEMANTICS] FATAL ERROR: Type mismatch detected!")
             self.logs.append(f"   Expected: {expected_type}, but got: {actual_type}")
             self.logs.append(f"   Variable '{identifier_token.value}' is declared as '{datatype_token.value}', but value '{literal_token.value}' is {actual_type}.")
+            self.logs.append("[SEMANTICS] C++ Rule: No implicit type conversion allowed between incompatible types.")
             self.logs.append("[SEMANTICS] Recovery Strategy: Compiler will discard assignment to prevent memory corruption.")
             self.is_valid = False
         else:
             self.logs.append(f"✓ [SEMANTICS] Types match! Expected {expected_type}, got {actual_type}.")
-            self.logs.append("[SEMANTICS] No type coercion needed.")
+            self.logs.append("[SEMANTICS] C++ Rule: Type compatibility verified - no type coercion needed.")
 
             # Bind to symbol table
             self.logs.append(f"[SEMANTICS] Binding variable '{identifier_token.value}' to Symbol Table...")
+            self.logs.append(f"[SEMANTICS] Scope Level: {self.current_level}, Memory Offset: {self.current_offset}")
             self.symbol_table[identifier_token.value] = {
-                'Type': datatype_token.value,
-                'Value': literal_token.value
+                'Data Type': datatype_token.value,
+                'Level': str(self.current_level),
+                'Offset': str(self.current_offset)
             }
-            self.logs.append(f"✓ [SEMANTICS] Variable '{identifier_token.value}' successfully bound.")
+            self.logs.append(f"✓ [SEMANTICS] Variable '{identifier_token.value}' successfully bound to symbol table.")
             self.logs.append("✓ Semantic Analysis Complete.")
             self.is_valid = True
 
@@ -328,11 +392,13 @@ class SemanticAnalyzer:
         return "UNKNOWN"
 
     def _get_actual_type(self, literal_token: Token) -> str:
-        """Get the actual type category from literal token."""
+        """Get the actual type category from literal token following C++ rules."""
         if literal_token.type == TokenType.STRING_LITERAL:
             return "STRING"
         elif literal_token.type == TokenType.NUMERIC_LITERAL:
-            # Check if it's a float or int
+            # C++ Rule: Strict distinction between int and float
+            # - If literal has decimal point -> FLOAT (e.g., 1.0, 3.14)
+            # - If literal has no decimal point -> INTEGER (e.g., 1, 100)
             if '.' in literal_token.value:
                 return "FLOAT"
             else:
@@ -356,6 +422,7 @@ class MultilineCompiler:
         self.symbol_table = {}
         self.overall_success = True
         self.has_unknown_tokens = False
+        self.current_offset = 0  # Track memory offset for symbol table
 
     def compile(self) -> Tuple[List[str], List[str], List[str], Dict[str, Dict[str, str]], bool, bool]:
         """Compile multiline code and return all logs and symbol table."""
@@ -411,7 +478,7 @@ class MultilineCompiler:
                 self.overall_success = False
 
             # Semantic Analysis (with accumulated symbol table)
-            semantic_analyzer = SemanticAnalyzer(tokens)
+            semantic_analyzer = SemanticAnalyzer(tokens, current_level=block_depth, current_offset=self.current_offset)
             semantic_analyzer.symbol_table = self.symbol_table.copy()  # Use accumulated table
             semantic_valid, semantic_logs, updated_table = semantic_analyzer.analyze()
             # Filter out the "STARTING" line from semantic analyzer
@@ -419,6 +486,11 @@ class MultilineCompiler:
             self.all_semantic_logs.extend([f"{indent}{log}" for log in filtered_semantic_logs])
 
             # Update symbol table with new variables
+            # Check if a new variable was added to increment offset
+            new_vars = set(updated_table.keys()) - set(self.symbol_table.keys())
+            if new_vars and semantic_valid:
+                self.current_offset += 1  # Increment offset for each new variable
+
             self.symbol_table.update(updated_table)
 
             if not semantic_valid:
@@ -433,6 +505,8 @@ class MultilineCompiler:
 
         return (self.all_lexer_logs, self.all_parser_logs, self.all_semantic_logs,
                 self.symbol_table, self.overall_success, self.has_unknown_tokens)
+
+
 
 
 # ============================================================================
@@ -678,17 +752,16 @@ def main():
         st.code("bet     → true\ncooked  → false\nligma   → null", language="text")
 
         st.markdown("<h3>🎯 Delimiter</h3>", unsafe_allow_html=True)
-        st.code("!       → end of statement", language="text")
+        st.code("!   → end of statement", language="text")
 
         st.divider()
         st.markdown("<h3>📝 Example Code</h3>", unsafe_allow_html=True)
-        st.code("""sigma playerID rizz 101!
-smol healthPos rizz 98.5!
+        st.code("""sigma points rizz 100!
+smol health rizz 95.5!
 {
-    gyatt rank rizz "S-Tier"!
-    sigma ammoCount rizz 30!
-}
-sigma finalScore rizz 5000!""", language="text")
+gyatt rank rizz "S-Tier"!
+sigma ammo rizz 30!
+}""", language="text")
 
     # Main Input with enhanced design
     st.markdown("---")
@@ -698,13 +771,12 @@ sigma finalScore rizz 5000!""", language="text")
     code_input = st.text_area(
         "Code Input",
         placeholder="""Example:
-sigma playerID rizz 101!
-smol healthPos rizz 98.5!
+sigma points rizz 100!
+smol health rizz 95.5!
 {
-    gyatt rank rizz "S-Tier"!
-    sigma ammoCount rizz 30!
-}
-sigma finalScore rizz 5000!""",
+gyatt rank rizz "S-Tier"!
+sigma ammo rizz 30!
+}""",
         label_visibility="collapsed",
         height=250
     )
@@ -738,10 +810,11 @@ sigma finalScore rizz 5000!""",
 
         **With Block Structure:**
         ```
-        sigma score rizz 1000!
+        sigma points rizz 100!
+        smol health rizz 95.5!
         {
-            gyatt status rizz "Active"!
-            smol multiplier rizz 1.5!
+        gyatt rank rizz "S-Tier"!
+        sigma ammo rizz 30!
         }
         ```
 
@@ -857,117 +930,104 @@ sigma finalScore rizz 5000!""",
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Display results in full-width horizontal sections
-        # Section 1: Lexical Analysis
-        st.markdown("""
-            <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        padding: 15px; border-radius: 10px 10px 0 0; margin-top: 20px;'>
-                <h3 style='color: white; margin: 0; text-align: center; font-size: 1.5em;'>
-                    🔍 LEXICAL ANALYSIS
-                </h3>
-            </div>
-        """, unsafe_allow_html=True)
+        # Use Streamlit tabs for analysis results
+        st.markdown("<h2 style='text-align: center; color: #667eea; margin: 20px 0;'>🔍 Analysis Results</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #6c757d; margin-bottom: 20px;'>Click on a tab to view the analysis details</p>", unsafe_allow_html=True)
 
-        st.markdown("""
-            <div style='background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px;
-                        border: 2px solid #667eea; border-top: none; margin-bottom: 20px;'>
-        """, unsafe_allow_html=True)
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 Lexical Table", "🌳 Syntax Tree", "🧠 Semantic Analysis", "📋 Symbol Table"])
 
-        for log in lexer_logs:
-            # Skip empty lines and separator lines
-            if not log.strip() or log.strip() == "":
-                continue
-            # Display statement headers as styled div
-            if "📝 Statement #" in log:
-                st.markdown(f"<div style='background: #667eea; color: white; padding: 8px 12px; border-radius: 5px; margin: 10px 0; font-weight: 600;'>{log}</div>", unsafe_allow_html=True)
-            elif "⚠️" in log or "Unknown" in log:
-                st.warning(log)
-            elif "✓" in log and ("Complete" in log or "Compilation" in log):
-                st.success(log)
-            elif "📦" in log:
-                st.info(log)
+        with tab1:
+            st.markdown("""
+                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            padding: 15px; border-radius: 10px 10px 0 0;'>
+                    <h3 style='color: white; margin: 0; text-align: center;'>🔍 LEXICAL ANALYSIS</h3>
+                </div>
+            """, unsafe_allow_html=True)
+            with st.container(height=400):
+                for log in lexer_logs:
+                    if not log.strip():
+                        continue
+                    if "📝 Statement #" in log:
+                        st.markdown(f"<div style='background: #667eea; color: white; padding: 8px 12px; border-radius: 5px; margin: 10px 0; font-weight: 600; font-family: monospace;'>{log}</div>", unsafe_allow_html=True)
+                    elif "⚠️" in log or "Unknown" in log:
+                        st.warning(log)
+                    elif "✓" in log and ("Complete" in log or "Compilation" in log):
+                        st.success(log)
+                    elif "📦" in log:
+                        st.info(log)
+                    else:
+                        st.info(log)
+
+        with tab2:
+            st.markdown("""
+                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            padding: 15px; border-radius: 10px 10px 0 0;'>
+                    <h3 style='color: white; margin: 0; text-align: center;'>🌳 SYNTAX ANALYSIS</h3>
+                </div>
+            """, unsafe_allow_html=True)
+            with st.container(height=400):
+                for log in parser_logs:
+                    if not log.strip():
+                        continue
+                    if "📝 Statement #" in log:
+                        st.markdown(f"<div style='background: #667eea; color: white; padding: 8px 12px; border-radius: 5px; margin: 10px 0; font-weight: 600; font-family: monospace;'>{log}</div>", unsafe_allow_html=True)
+                    elif "❌" in log or "ERROR" in log:
+                        st.error(log)
+                    elif "✓" in log and ("Complete" in log or "Compilation" in log):
+                        st.success(log)
+                    elif "📦" in log:
+                        st.info(log)
+                    else:
+                        st.info(log)
+
+        with tab3:
+            st.markdown("""
+                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            padding: 15px; border-radius: 10px 10px 0 0;'>
+                    <h3 style='color: white; margin: 0; text-align: center;'>🧠 SEMANTIC ANALYSIS</h3>
+                </div>
+            """, unsafe_allow_html=True)
+            with st.container(height=400):
+                for log in semantic_logs:
+                    if not log.strip():
+                        continue
+                    if "📝 Statement #" in log:
+                        st.markdown(f"<div style='background: #667eea; color: white; padding: 8px 12px; border-radius: 5px; margin: 10px 0; font-weight: 600; font-family: monospace;'>{log}</div>", unsafe_allow_html=True)
+                    elif "❌" in log or "FATAL" in log:
+                        st.error(log)
+                    elif "✓" in log and ("Complete" in log or "Compilation" in log):
+                        st.success(log)
+                    elif "📦" in log or "📊" in log:
+                        st.info(log)
+                    else:
+                        st.info(log)
+
+        with tab4:
+            st.markdown("""
+                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            padding: 15px; border-radius: 10px 10px 0 0;'>
+                    <h3 style='color: white; margin: 0; text-align: center;'>📋 SYMBOL TABLE</h3>
+                </div>
+            """, unsafe_allow_html=True)
+
+            if symbol_table:
+                st.markdown(f"<p style='text-align: center; color: #667eea; font-size: 18px; font-weight: 600; margin: 15px 0;'>✨ {len(symbol_table)} Variables Bound ✨</p>", unsafe_allow_html=True)
+                df = pd.DataFrame.from_dict(symbol_table, orient='index')
+                df.index.name = 'Variable'
+                df.reset_index(inplace=True)
+
+                # Reorder columns to ensure proper display: Variable, Data Type, Level, Offset
+                df = df[['Variable', 'Data Type', 'Level', 'Offset']]
+
+                # Display the dataframe with custom styling
+                st.dataframe(
+                    df,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=350
+                )
             else:
-                st.info(log)
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        # Section 2: Syntax Analysis
-        st.markdown("""
-            <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        padding: 15px; border-radius: 10px 10px 0 0;'>
-                <h3 style='color: white; margin: 0; text-align: center; font-size: 1.5em;'>
-                    ⚙️ SYNTAX ANALYSIS
-                </h3>
-            </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-            <div style='background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px;
-                        border: 2px solid #667eea; border-top: none; margin-bottom: 20px;'>
-        """, unsafe_allow_html=True)
-
-        for log in parser_logs:
-            # Skip empty lines and separator lines
-            if not log.strip() or log.strip() == "":
-                continue
-            # Display statement headers as styled div
-            if "📝 Statement #" in log:
-                st.markdown(f"<div style='background: #667eea; color: white; padding: 8px 12px; border-radius: 5px; margin: 10px 0; font-weight: 600;'>{log}</div>", unsafe_allow_html=True)
-            elif "❌" in log or "ERROR" in log:
-                st.error(log)
-            elif "✓" in log and ("Complete" in log or "Compilation" in log):
-                st.success(log)
-            elif "📦" in log:
-                st.info(log)
-            else:
-                st.info(log)
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        # Section 3: Semantic Analysis
-        st.markdown("""
-            <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        padding: 15px; border-radius: 10px 10px 0 0;'>
-                <h3 style='color: white; margin: 0; text-align: center; font-size: 1.5em;'>
-                    🧠 SEMANTIC ANALYSIS
-                </h3>
-            </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-            <div style='background: #f8f9fa; padding: 20px; border-radius: 0 0 10px 10px;
-                        border: 2px solid #667eea; border-top: none; margin-bottom: 20px;'>
-        """, unsafe_allow_html=True)
-
-        for log in semantic_logs:
-            # Skip empty lines and separator lines
-            if not log.strip() or log.strip() == "":
-                continue
-            # Display statement headers as styled div
-            if "📝 Statement #" in log:
-                st.markdown(f"<div style='background: #667eea; color: white; padding: 8px 12px; border-radius: 5px; margin: 10px 0; font-weight: 600;'>{log}</div>", unsafe_allow_html=True)
-            elif "❌" in log or "FATAL" in log:
-                st.error(log)
-            elif "✓" in log and ("Complete" in log or "Compilation" in log):
-                st.success(log)
-            elif "📦" in log or "📊" in log:
-                st.info(log)
-            else:
-                st.info(log)
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        # Sidebar: Symbol Table with enhanced design
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("<h2 style='text-align: center;'>📊 Symbol Table</h2>", unsafe_allow_html=True)
-        if symbol_table:
-            st.sidebar.markdown(f"<p style='text-align: center; color: #ffd700; font-size: 18px; font-weight: 600;'>✨ {len(symbol_table)} Variables Bound ✨</p>", unsafe_allow_html=True)
-            df = pd.DataFrame.from_dict(symbol_table, orient='index')
-            df.index.name = 'Variable'
-            df.reset_index(inplace=True)
-            st.sidebar.dataframe(df, use_container_width=True, hide_index=True)
-        else:
-            st.sidebar.info("No variables bound yet. Compile your code first!")
+                st.info("📭 No variables bound yet. The symbol table will populate after successful compilation!")
 
         # Overall Status with enhanced design
         st.markdown("---")

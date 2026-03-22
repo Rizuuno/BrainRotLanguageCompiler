@@ -46,3 +46,16 @@ sigma pts rizz 2!
 
 [F5] Unknown token panic mode (should FAIL)
 sigma age @@ 20!
+
+====================
+SCREENSHOT SCENARIOS (EXPLAINABILITY LAYER)
+====================
+
+Scenario 1: Completely valid line of code (should PASS)
+sigma level rizz 42!
+
+Scenario 2: Syntax Error - missing delimiter (should FAIL in parser)
+sigma level rizz 42
+
+Scenario 3: Semantic Error - type mismatch (should FAIL in semantic analyzer)
+sigma level rizz "forty two"!

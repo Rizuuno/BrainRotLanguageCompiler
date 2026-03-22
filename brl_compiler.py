@@ -850,16 +850,12 @@ sigma ammo rizz 30!
         ```
         """)
 
-    st.markdown("---")
-
-    st.markdown("---")
-
     # Welcome message when no compilation has happened yet
     if not compile_button:
         st.markdown("""
             <div style='background: linear-gradient(135deg, #008000 0%, #008000 100%);
                         padding: 40px; border-radius: 15px; text-align: center;
-                        box-shadow: 0 8px 16px rgba(0,0,0,0.2); margin: 30px 0;'>
+                        box-shadow: 0 8px 16px rgba(0,0,0,0.2); margin: 16px 0;'>
                 <h2 style='color: white; margin: 0; font-size: 2.5em;'>Welcome to BRL Compiler</h2>
                 <p style='color: white; font-size: 1.2em; margin-top: 15px; line-height: 1.6;'>
                     Ready to compile code?<br>

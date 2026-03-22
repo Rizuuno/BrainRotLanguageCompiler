@@ -54,11 +54,17 @@ A web-based compiler for BrainRotLanguage (BRL) built with Streamlit for CS Prog
 ##Features
 
 ✅ -**Multiline Code Support**: Process multiple statements at once with block structures
+
 ✅ -**Explainability Layer**: Detailed logs at each compilation phase for every statement
+
 ✅ -**Panic Mode Recovery**: Skips unknown tokens and continues parsing
+
 ✅ -**Symbol Table Display**: Shows all bound variables with types and values
+
 ✅ -**Interactive UI**: Clean three-column layout for analysis phases
+
 ✅ -**Real-time Compilation**: Instant feedback on code validity
+
 ✅ -**Block Structure Recognition**: Handles nested code blocks with `{` and `}`
 
 

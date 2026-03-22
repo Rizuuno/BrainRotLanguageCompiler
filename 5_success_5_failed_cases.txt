@@ -1,0 +1,48 @@
+BRL COMPILER TEST CASES (5 SUCCESS + 5 FAILURE)
+Use each case independently.
+Copy only the code lines under each case into your program input.
+
+====================
+SUCCESS CASES
+====================
+
+[S1] Basic integer assignment (should PASS)
+sigma age rizz 20!
+
+[S2] Basic string assignment (should PASS)
+gyatt username rizz "noobmaster"!
+
+[S3] Basic float assignment (should PASS)
+smol hp rizz 99.9!
+
+[S4] Nested scope with shadowing (should PASS)
+sigma x rizz 10!
+{
+sigma x rizz 99!
+}
+smol ratio rizz 3.14!
+
+[S5] Multiple valid declarations (should PASS)
+sigma _score1 rizz 100!
+gyatt tag_2 rizz "A"!
+smol velocity9 rizz 1.5!
+
+====================
+FAILURE CASES
+====================
+
+[F1] Missing delimiter (should FAIL)
+sigma age rizz 20
+
+[F2] Extra token in statement (should FAIL)
+sigma age rizz 20 30!
+
+[F3] Type mismatch integer <- string (should FAIL)
+sigma age rizz "twenty"!
+
+[F4] Redeclaration in same scope (should FAIL)
+sigma pts rizz 1!
+sigma pts rizz 2!
+
+[F5] Unknown token panic mode (should FAIL)
+sigma age @@ 20!

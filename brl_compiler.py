@@ -5,9 +5,7 @@ import html
 from enum import Enum
 from typing import List, Dict, Tuple, Optional
 
-# ============================================================================
-# TOKEN TYPES ENUMERATION
-# ============================================================================
+# TOKEN TYPES ENUMERATION PART
 class TokenType(Enum):
     # Data Types
     DATATYPE_SIGMA = "DATATYPE_SIGMA"      # int
@@ -50,10 +48,7 @@ class TokenType(Enum):
     # Unknown
     UNKNOWN = "UNKNOWN"
 
-
-# ============================================================================
 # TOKEN CLASS
-# ============================================================================
 class Token:
     def __init__(self, token_type: TokenType, value: str):
         self.type = token_type
@@ -61,11 +56,8 @@ class Token:
 
     def __repr__(self):
         return f"Token({self.type.name}, '{self.value}')"
-
-
-# ============================================================================
-# LEXER CLASS - LEXICAL ANALYSIS
-# ============================================================================
+ 
+#LEXICAL ANALYSIS PART
 class Lexer:
     def __init__(self, code: str):
         self.code = code
@@ -97,9 +89,7 @@ class Lexer:
         """Perform lexical analysis and return tokens with logs."""
         self.logs.append("--- STARTING LEXICAL ANALYSIS ---")
 
-        # Pattern to properly split tokens including delimiters (C++ rules)
-        # Order matters: check for invalid identifiers starting with digits first
-        # Matches: strings in quotes, invalid identifiers (digit-start), valid identifiers, numbers, delimiters, unknown
+        # Tokenize using regex pattern
         pattern = r'"[^"]*"|\d+[a-zA-Z_][a-zA-Z0-9_]*|[a-zA-Z_][a-zA-Z0-9_]*|\d+\.?\d*|[!{}]|\S'
         parts = re.findall(pattern, self.code)
 
@@ -138,12 +128,12 @@ class Lexer:
             return Token(TokenType.RBRACE, lexeme)
 
         # Check for string literals (enclosed in quotes)
-        # Must have both opening and closing quotes (C++ rule)
+        # Must have both opening and closing quotes 
         if lexeme.startswith('"'):
             if lexeme.endswith('"') and len(lexeme) >= 2:
                 return Token(TokenType.STRING_LITERAL, lexeme)
             else:
-                # Unclosed string - invalid in C++
+                # Unclosed string
                 return Token(TokenType.UNKNOWN, lexeme)
 
         # Check for keywords (must be checked before identifiers)
@@ -151,12 +141,11 @@ class Lexer:
             return Token(self.keywords[lexeme], lexeme)
 
         # Check for numeric literals (int or float)
-        # Must follow C++ numeric format rules
         if self._is_numeric(lexeme):
             return Token(TokenType.NUMERIC_LITERAL, lexeme)
 
         # Check for identifiers (variable names)
-        # Must follow C++ identifier rules: start with letter or underscore
+       
         if self._is_identifier(lexeme):
             return Token(TokenType.IDENTIFIER, lexeme)
 
@@ -165,10 +154,7 @@ class Lexer:
 
     def _is_numeric(self, lexeme: str) -> bool:
         """Check if lexeme is a valid number (int or float) following C++ rules."""
-        # C++ numeric rules:
-        # - Cannot start with multiple zeros (except "0" or "0.x")
-        # - Cannot have multiple decimal points
-        # - Cannot have letters mixed in (caught by regex, but double-check)
+        # Validate numeric format
 
         # Check for invalid patterns like "1.2.3" or "1a2"
         if lexeme.count('.') > 1:
@@ -185,17 +171,12 @@ class Lexer:
 
     def _is_identifier(self, lexeme: str) -> bool:
         """Check if lexeme is a valid identifier following C++ rules."""
-        # C++ identifier rules:
-        # - Must start with letter (a-z, A-Z) or underscore (_)
-        # - Can contain letters, digits, underscores
-        # - Cannot start with digit
-        # - Cannot contain special characters like -, ., $, @, etc.
+        # Valid identifier format
         return re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', lexeme) is not None
 
 
-# ============================================================================
-# PARSER CLASS - SYNTAX ANALYSIS
-# ============================================================================
+
+#SYNTAX ANALYSIS PART
 class Parser:
     def __init__(self, tokens: List[Token]):
         self.tokens = tokens
@@ -207,13 +188,12 @@ class Parser:
         self.logs.append("--- STARTING SYNTAX ANALYSIS ---")
         self.logs.append("[PARSER] Checking statement structure...")
 
-        # Filter out UNKNOWN tokens (Panic Mode Recovery)
+        # Filter out UNKNOWN tokens using panic mode approach
         valid_tokens = [t for t in self.tokens if t.type != TokenType.UNKNOWN]
 
         # Expected structure: [DATATYPE] [IDENTIFIER] [ASSIGN] [LITERAL] [DELIMITER]
         self.logs.append("[PARSER] Expected rule: [DATATYPE] [IDENTIFIER] [ASSIGN] [LITERAL] [DELIMITER]")
 
-        # C++ Rule: Exact token count validation
         # Must be exactly 5 tokens (not more, not less)
         if len(valid_tokens) < 5:
             self.logs.append(f"[ERROR] [PARSER] ERROR: Expected 5 tokens, but found {len(valid_tokens)}.")
@@ -221,45 +201,45 @@ class Parser:
             self.is_valid = False
             return False, self.logs
         elif len(valid_tokens) > 5:
-            # C++ doesn't allow extra tokens after delimiter
+           
             self.logs.append(f"[ERROR] [PARSER] ERROR: Expected 5 tokens, but found {len(valid_tokens)}.")
             self.logs.append(f"[PARSER] Extra tokens detected after delimiter: {[t.value for t in valid_tokens[5:]]}")
             self.logs.append("[PARSER] C++ Rule: Only one statement per line allowed.")
             self.is_valid = False
             return False, self.logs
 
-        # Check each position with C++ rules
+        # Check each position 
         errors = []
 
-        # Position 0: DATATYPE (C++ requires type specification)
+        # Position 0: DATATYPE 
         if not self._is_datatype(valid_tokens[0]):
             errors.append(f"Position 0: Expected DATATYPE (sigma/gyatt/smol), found {valid_tokens[0].type.name}")
             self.logs.append(f"[PARSER] C++ Rule: Variables must have explicit type declaration.")
         else:
             self.logs.append(f"[SUCCESS] [PARSER] Position 0: '{valid_tokens[0].value}' is a valid DATATYPE")
 
-        # Position 1: IDENTIFIER (C++ requires valid variable name)
+        # Position 1: IDENTIFIER 
         if valid_tokens[1].type != TokenType.IDENTIFIER:
             errors.append(f"Position 1: Expected IDENTIFIER, found {valid_tokens[1].type.name}")
             self.logs.append(f"[PARSER] C++ Rule: Variable name must be a valid identifier.")
         else:
             self.logs.append(f"[SUCCESS] [PARSER] Position 1: '{valid_tokens[1].value}' is a valid IDENTIFIER")
 
-        # Position 2: ASSIGN (C++ requires initialization operator)
+        # Position 2: ASSIGN 
         if valid_tokens[2].type != TokenType.ASSIGN_RIZZ:
             errors.append(f"Position 2: Expected ASSIGN (rizz), found {valid_tokens[2].type.name}")
             self.logs.append(f"[PARSER] C++ Rule: Variables must use assignment operator (=).")
         else:
             self.logs.append(f"[SUCCESS] [PARSER] Position 2: '{valid_tokens[2].value}' is a valid ASSIGN operator")
 
-        # Position 3: LITERAL (C++ requires initialization value)
+        # Position 3: LITERAL 
         if not self._is_literal(valid_tokens[3]):
             errors.append(f"Position 3: Expected LITERAL value, found {valid_tokens[3].type.name}")
             self.logs.append(f"[PARSER] C++ Rule: Variables must be initialized with a value.")
         else:
             self.logs.append(f"[SUCCESS] [PARSER] Position 3: '{valid_tokens[3].value}' is a valid LITERAL")
 
-        # Position 4: DELIMITER (C++ requires statement terminator)
+        # Position 4: DELIMITER 
         if valid_tokens[4].type != TokenType.DELIMITER:
             errors.append(f"Position 4: Expected DELIMITER (!), found {valid_tokens[4].type.name}")
             self.logs.append(f"[PARSER] C++ Rule: Statements must end with semicolon (!).")
@@ -298,9 +278,9 @@ class Parser:
         ]
 
 
-# ============================================================================
-# SEMANTIC ANALYZER CLASS - SEMANTIC ANALYSIS
-# ============================================================================
+
+#SEMANTIC ANALYSIS PART
+
 class SemanticAnalyzer:
     def __init__(self, tokens: List[Token], current_level: int = 0, current_offset: int = 0):
         self.tokens = tokens
@@ -328,12 +308,12 @@ class SemanticAnalyzer:
         literal_token = valid_tokens[3]
         delimiter_token = valid_tokens[4]
 
-        # C++ Rule 1: Check for variable redeclaration in the same scope
+        #Check for variable redeclaration in the same scope
         self.logs.append("[SEMANTICS] Checking for variable redeclaration...")
         if identifier_token.value in self.symbol_table:
             existing_level = int(self.symbol_table[identifier_token.value]['Level'])
             if existing_level == self.current_level:
-                # Redeclaration in the same scope - ERROR in C++
+                # Redeclaration in the same scope
                 self.logs.append(f"[ERROR] [SEMANTICS] FATAL ERROR: Variable redeclaration detected!")
                 self.logs.append(f"   Variable '{identifier_token.value}' already declared in this scope (Level {self.current_level}).")
                 self.logs.append(f"[SEMANTICS] C++ Rule: Cannot redeclare variable in the same scope.")
@@ -341,13 +321,13 @@ class SemanticAnalyzer:
                 self.is_valid = False
                 return False, self.logs, self.symbol_table
             else:
-                # Variable exists in different scope - allowed (shadowing)
+                # Variable exists in different scope
                 self.logs.append(f"[WARNING] [SEMANTICS] WARNING: Variable '{identifier_token.value}' shadows variable from outer scope (Level {existing_level}).")
                 self.logs.append(f"[SEMANTICS] C++ Rule: Shadowing is allowed but may cause confusion.")
         else:
             self.logs.append(f"[SUCCESS] [SEMANTICS] Variable '{identifier_token.value}' is not previously declared.")
 
-        # C++ Rule 2: Strict type checking (no implicit conversions)
+        # C++ Rule 2: Strict type checking 
         self.logs.append("[SEMANTICS] Checking Type Compatibility...")
         self.logs.append(f"[SEMANTICS] Variable '{identifier_token.value}' is declared as '{datatype_token.value}'.")
         self.logs.append(f"[SEMANTICS] Value is '{literal_token.value}' ({literal_token.type.name}).")
@@ -356,7 +336,7 @@ class SemanticAnalyzer:
         expected_type = self._get_expected_type(datatype_token)
         actual_type = self._get_actual_type(literal_token)
 
-        # C++ Rule: Strict type matching (no implicit conversions between incompatible types)
+        #Strict type matching (no implicit conversions between incompatible types)
         if expected_type != actual_type:
             self.logs.append(f"[ERROR] [SEMANTICS] FATAL ERROR: Type mismatch detected!")
             self.logs.append(f"   Expected: {expected_type}, but got: {actual_type}")
@@ -397,9 +377,7 @@ class SemanticAnalyzer:
         if literal_token.type == TokenType.STRING_LITERAL:
             return "STRING"
         elif literal_token.type == TokenType.NUMERIC_LITERAL:
-            # C++ Rule: Strict distinction between int and float
-            # - If literal has decimal point -> FLOAT (e.g., 1.0, 3.14)
-            # - If literal has no decimal point -> INTEGER (e.g., 1, 100)
+            # Distinguish between int and float based on decimal point
             if '.' in literal_token.value:
                 return "FLOAT"
             else:
@@ -409,11 +387,9 @@ class SemanticAnalyzer:
         elif literal_token.type == TokenType.NULL_LIGMA:
             return "NULL"
         return "UNKNOWN"
-
-
-# ============================================================================
+    
 # MULTILINE COMPILER - PROCESSES MULTIPLE STATEMENTS
-# ============================================================================
+
 class MultilineCompiler:
     def __init__(self, code: str):
         self.code = code
@@ -453,7 +429,7 @@ class MultilineCompiler:
             statement_num += 1
             indent = "  " * block_depth
 
-            # Add statement header (cleaner version)
+            # Add statement header
             self.all_lexer_logs.append(f"\n[STATEMENT #{statement_num}]: {line}")
             self.all_parser_logs.append(f"\n[STATEMENT #{statement_num}]")
             self.all_semantic_logs.append(f"\n[STATEMENT #{statement_num}]")
@@ -497,12 +473,11 @@ class MultilineCompiler:
             if not semantic_valid:
                 self.overall_success = False
 
-        # Final summary (cleaner version)
+        # Final summary 
         self.all_lexer_logs.append(f"\n[COMPLETE] Compilation Complete: {statement_num} statement(s) processed")
         self.all_parser_logs.append(f"\n[COMPLETE] Compilation Complete: {statement_num} statement(s) processed")
         self.all_semantic_logs.append(f"\n[COMPLETE] Compilation Complete: {statement_num} statement(s) processed")
         self.all_semantic_logs.append(f"[INFO] Total variables bound: {len(self.symbol_table)}")
-        self.all_semantic_logs.append(f"{'='*60}")
 
         return (self.all_lexer_logs, self.all_parser_logs, self.all_semantic_logs,
                 self.symbol_table, self.overall_success, self.has_unknown_tokens)
@@ -510,9 +485,9 @@ class MultilineCompiler:
 
 
 
-# ============================================================================
-# STREAMLIT UI - THE FRONTEND
-# ============================================================================
+
+#THE FRONTEND
+
 def main():
     # Page configuration
     st.set_page_config(
@@ -1109,10 +1084,8 @@ sigma ammo rizz 30!
             </div>
         </div>
     """, unsafe_allow_html=True)
+    
+# MAIN TO RUN
 
-
-# ============================================================================
-# RUN THE APP
-# ============================================================================
 if __name__ == "__main__":
     main()

@@ -1,12 +1,11 @@
 import streamlit as st
 import re
 import pandas as pd
+import html
 from enum import Enum
 from typing import List, Dict, Tuple, Optional
 
-# ============================================================================
-# TOKEN TYPES ENUMERATION
-# ============================================================================
+# TOKEN TYPES ENUMERATION PART
 class TokenType(Enum):
     # Data Types
     DATATYPE_SIGMA = "DATATYPE_SIGMA"      # int
@@ -49,10 +48,7 @@ class TokenType(Enum):
     # Unknown
     UNKNOWN = "UNKNOWN"
 
-
-# ============================================================================
 # TOKEN CLASS
-# ============================================================================
 class Token:
     def __init__(self, token_type: TokenType, value: str):
         self.type = token_type
@@ -60,11 +56,8 @@ class Token:
 
     def __repr__(self):
         return f"Token({self.type.name}, '{self.value}')"
-
-
-# ============================================================================
-# LEXER CLASS - LEXICAL ANALYSIS
-# ============================================================================
+ 
+#LEXICAL ANALYSIS PART
 class Lexer:
     def __init__(self, code: str):
         self.code = code
@@ -96,9 +89,7 @@ class Lexer:
         """Perform lexical analysis and return tokens with logs."""
         self.logs.append("--- STARTING LEXICAL ANALYSIS ---")
 
-        # Pattern to properly split tokens including delimiters (C++ rules)
-        # Order matters: check for invalid identifiers starting with digits first
-        # Matches: strings in quotes, invalid identifiers (digit-start), valid identifiers, numbers, delimiters, unknown
+        # Tokenize using regex pattern
         pattern = r'"[^"]*"|\d+[a-zA-Z_][a-zA-Z0-9_]*|[a-zA-Z_][a-zA-Z0-9_]*|\d+\.?\d*|[!{}]|\S'
         parts = re.findall(pattern, self.code)
 
@@ -112,15 +103,15 @@ class Lexer:
 
             if token.type == TokenType.UNKNOWN:
                 self.unknown_count += 1
-                self.logs.append(f"⚠️ [LEXER] Found '{part}' -> ⚠️ UNKNOWN TOKEN (Panic Mode: Skipped)")
+                self.logs.append(f"[WARNING] [LEXER] Found '{part}' -> UNKNOWN TOKEN (Panic Mode: Skipped)")
             else:
-                self.logs.append(f"✓ [LEXER] Found '{part}' -> Identified as {token.type.name}")
+                self.logs.append(f"[SUCCESS] [LEXER] Found '{part}' -> Identified as {token.type.name}")
 
         # Summary
         if self.unknown_count == 0:
-            self.logs.append(f"✓ Lexical Analysis Complete. {len(self.tokens)} tokens recognized. 0 Unknown Tokens.")
+            self.logs.append(f"[SUCCESS] Lexical Analysis Complete. {len(self.tokens)} tokens recognized. 0 Unknown Tokens.")
         else:
-            self.logs.append(f"⚠️ Lexical Analysis Complete. {len(self.tokens)} tokens found. {self.unknown_count} Unknown Tokens skipped.")
+            self.logs.append(f"[WARNING] Lexical Analysis Complete. {len(self.tokens)} tokens found. {self.unknown_count} Unknown Tokens skipped.")
 
         return self.tokens, self.logs
 
@@ -137,12 +128,12 @@ class Lexer:
             return Token(TokenType.RBRACE, lexeme)
 
         # Check for string literals (enclosed in quotes)
-        # Must have both opening and closing quotes (C++ rule)
+        # Must have both opening and closing quotes 
         if lexeme.startswith('"'):
             if lexeme.endswith('"') and len(lexeme) >= 2:
                 return Token(TokenType.STRING_LITERAL, lexeme)
             else:
-                # Unclosed string - invalid in C++
+                # Unclosed string
                 return Token(TokenType.UNKNOWN, lexeme)
 
         # Check for keywords (must be checked before identifiers)
@@ -150,12 +141,11 @@ class Lexer:
             return Token(self.keywords[lexeme], lexeme)
 
         # Check for numeric literals (int or float)
-        # Must follow C++ numeric format rules
         if self._is_numeric(lexeme):
             return Token(TokenType.NUMERIC_LITERAL, lexeme)
 
         # Check for identifiers (variable names)
-        # Must follow C++ identifier rules: start with letter or underscore
+       
         if self._is_identifier(lexeme):
             return Token(TokenType.IDENTIFIER, lexeme)
 
@@ -164,10 +154,7 @@ class Lexer:
 
     def _is_numeric(self, lexeme: str) -> bool:
         """Check if lexeme is a valid number (int or float) following C++ rules."""
-        # C++ numeric rules:
-        # - Cannot start with multiple zeros (except "0" or "0.x")
-        # - Cannot have multiple decimal points
-        # - Cannot have letters mixed in (caught by regex, but double-check)
+        # Validate numeric format
 
         # Check for invalid patterns like "1.2.3" or "1a2"
         if lexeme.count('.') > 1:
@@ -184,17 +171,12 @@ class Lexer:
 
     def _is_identifier(self, lexeme: str) -> bool:
         """Check if lexeme is a valid identifier following C++ rules."""
-        # C++ identifier rules:
-        # - Must start with letter (a-z, A-Z) or underscore (_)
-        # - Can contain letters, digits, underscores
-        # - Cannot start with digit
-        # - Cannot contain special characters like -, ., $, @, etc.
+        # Valid identifier format
         return re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', lexeme) is not None
 
 
-# ============================================================================
-# PARSER CLASS - SYNTAX ANALYSIS
-# ============================================================================
+
+#SYNTAX ANALYSIS PART
 class Parser:
     def __init__(self, tokens: List[Token]):
         self.tokens = tokens
@@ -206,74 +188,73 @@ class Parser:
         self.logs.append("--- STARTING SYNTAX ANALYSIS ---")
         self.logs.append("[PARSER] Checking statement structure...")
 
-        # Filter out UNKNOWN tokens (Panic Mode Recovery)
+        # Filter out UNKNOWN tokens using panic mode approach
         valid_tokens = [t for t in self.tokens if t.type != TokenType.UNKNOWN]
 
         # Expected structure: [DATATYPE] [IDENTIFIER] [ASSIGN] [LITERAL] [DELIMITER]
         self.logs.append("[PARSER] Expected rule: [DATATYPE] [IDENTIFIER] [ASSIGN] [LITERAL] [DELIMITER]")
 
-        # C++ Rule: Exact token count validation
         # Must be exactly 5 tokens (not more, not less)
         if len(valid_tokens) < 5:
-            self.logs.append(f"❌ [PARSER] ERROR: Expected 5 tokens, but found {len(valid_tokens)}.")
+            self.logs.append(f"[ERROR] [PARSER] ERROR: Expected 5 tokens, but found {len(valid_tokens)}.")
             self.logs.append("[PARSER] Missing components in statement structure.")
             self.is_valid = False
             return False, self.logs
         elif len(valid_tokens) > 5:
-            # C++ doesn't allow extra tokens after delimiter
-            self.logs.append(f"❌ [PARSER] ERROR: Expected 5 tokens, but found {len(valid_tokens)}.")
+           
+            self.logs.append(f"[ERROR] [PARSER] ERROR: Expected 5 tokens, but found {len(valid_tokens)}.")
             self.logs.append(f"[PARSER] Extra tokens detected after delimiter: {[t.value for t in valid_tokens[5:]]}")
             self.logs.append("[PARSER] C++ Rule: Only one statement per line allowed.")
             self.is_valid = False
             return False, self.logs
 
-        # Check each position with C++ rules
+        # Check each position 
         errors = []
 
-        # Position 0: DATATYPE (C++ requires type specification)
+        # Position 0: DATATYPE 
         if not self._is_datatype(valid_tokens[0]):
             errors.append(f"Position 0: Expected DATATYPE (sigma/gyatt/smol), found {valid_tokens[0].type.name}")
             self.logs.append(f"[PARSER] C++ Rule: Variables must have explicit type declaration.")
         else:
-            self.logs.append(f"✓ [PARSER] Position 0: '{valid_tokens[0].value}' is a valid DATATYPE")
+            self.logs.append(f"[SUCCESS] [PARSER] Position 0: '{valid_tokens[0].value}' is a valid DATATYPE")
 
-        # Position 1: IDENTIFIER (C++ requires valid variable name)
+        # Position 1: IDENTIFIER 
         if valid_tokens[1].type != TokenType.IDENTIFIER:
             errors.append(f"Position 1: Expected IDENTIFIER, found {valid_tokens[1].type.name}")
             self.logs.append(f"[PARSER] C++ Rule: Variable name must be a valid identifier.")
         else:
-            self.logs.append(f"✓ [PARSER] Position 1: '{valid_tokens[1].value}' is a valid IDENTIFIER")
+            self.logs.append(f"[SUCCESS] [PARSER] Position 1: '{valid_tokens[1].value}' is a valid IDENTIFIER")
 
-        # Position 2: ASSIGN (C++ requires initialization operator)
+        # Position 2: ASSIGN 
         if valid_tokens[2].type != TokenType.ASSIGN_RIZZ:
             errors.append(f"Position 2: Expected ASSIGN (rizz), found {valid_tokens[2].type.name}")
             self.logs.append(f"[PARSER] C++ Rule: Variables must use assignment operator (=).")
         else:
-            self.logs.append(f"✓ [PARSER] Position 2: '{valid_tokens[2].value}' is a valid ASSIGN operator")
+            self.logs.append(f"[SUCCESS] [PARSER] Position 2: '{valid_tokens[2].value}' is a valid ASSIGN operator")
 
-        # Position 3: LITERAL (C++ requires initialization value)
+        # Position 3: LITERAL 
         if not self._is_literal(valid_tokens[3]):
             errors.append(f"Position 3: Expected LITERAL value, found {valid_tokens[3].type.name}")
             self.logs.append(f"[PARSER] C++ Rule: Variables must be initialized with a value.")
         else:
-            self.logs.append(f"✓ [PARSER] Position 3: '{valid_tokens[3].value}' is a valid LITERAL")
+            self.logs.append(f"[SUCCESS] [PARSER] Position 3: '{valid_tokens[3].value}' is a valid LITERAL")
 
-        # Position 4: DELIMITER (C++ requires statement terminator)
+        # Position 4: DELIMITER 
         if valid_tokens[4].type != TokenType.DELIMITER:
             errors.append(f"Position 4: Expected DELIMITER (!), found {valid_tokens[4].type.name}")
             self.logs.append(f"[PARSER] C++ Rule: Statements must end with semicolon (!).")
         else:
-            self.logs.append(f"✓ [PARSER] Position 4: '{valid_tokens[4].value}' is a valid DELIMITER")
+            self.logs.append(f"[SUCCESS] [PARSER] Position 4: '{valid_tokens[4].value}' is a valid DELIMITER")
 
         # Report results
         if errors:
-            self.logs.append("❌ [PARSER] SYNTAX ERRORS DETECTED:")
+            self.logs.append("[ERROR] [PARSER] SYNTAX ERRORS DETECTED:")
             for error in errors:
                 self.logs.append(f"   - {error}")
             self.is_valid = False
         else:
-            self.logs.append("✓ [PARSER] Actual structure matches expected rule perfectly.")
-            self.logs.append("✓ Syntax Analysis Complete. No structural errors.")
+            self.logs.append("[SUCCESS] [PARSER] Actual structure matches expected rule perfectly.")
+            self.logs.append("[SUCCESS] Syntax Analysis Complete. No structural errors.")
             self.is_valid = True
 
         return self.is_valid, self.logs
@@ -297,9 +278,9 @@ class Parser:
         ]
 
 
-# ============================================================================
-# SEMANTIC ANALYZER CLASS - SEMANTIC ANALYSIS
-# ============================================================================
+
+#SEMANTIC ANALYSIS PART
+
 class SemanticAnalyzer:
     def __init__(self, tokens: List[Token], current_level: int = 0, current_offset: int = 0):
         self.tokens = tokens
@@ -317,7 +298,7 @@ class SemanticAnalyzer:
         valid_tokens = [t for t in self.tokens if t.type != TokenType.UNKNOWN]
 
         if len(valid_tokens) < 5:
-            self.logs.append("❌ [SEMANTICS] ERROR: Insufficient tokens for semantic analysis.")
+            self.logs.append("[ERROR] [SEMANTICS] ERROR: Insufficient tokens for semantic analysis.")
             return False, self.logs, self.symbol_table
 
         # Extract components
@@ -327,26 +308,26 @@ class SemanticAnalyzer:
         literal_token = valid_tokens[3]
         delimiter_token = valid_tokens[4]
 
-        # C++ Rule 1: Check for variable redeclaration in the same scope
+        #Check for variable redeclaration in the same scope
         self.logs.append("[SEMANTICS] Checking for variable redeclaration...")
         if identifier_token.value in self.symbol_table:
             existing_level = int(self.symbol_table[identifier_token.value]['Level'])
             if existing_level == self.current_level:
-                # Redeclaration in the same scope - ERROR in C++
-                self.logs.append(f"❌ [SEMANTICS] FATAL ERROR: Variable redeclaration detected!")
+                # Redeclaration in the same scope
+                self.logs.append(f"[ERROR] [SEMANTICS] FATAL ERROR: Variable redeclaration detected!")
                 self.logs.append(f"   Variable '{identifier_token.value}' already declared in this scope (Level {self.current_level}).")
                 self.logs.append(f"[SEMANTICS] C++ Rule: Cannot redeclare variable in the same scope.")
                 self.logs.append("[SEMANTICS] Recovery Strategy: Compiler will discard this declaration.")
                 self.is_valid = False
                 return False, self.logs, self.symbol_table
             else:
-                # Variable exists in different scope - allowed (shadowing)
-                self.logs.append(f"⚠️ [SEMANTICS] WARNING: Variable '{identifier_token.value}' shadows variable from outer scope (Level {existing_level}).")
+                # Variable exists in different scope
+                self.logs.append(f"[WARNING] [SEMANTICS] WARNING: Variable '{identifier_token.value}' shadows variable from outer scope (Level {existing_level}).")
                 self.logs.append(f"[SEMANTICS] C++ Rule: Shadowing is allowed but may cause confusion.")
         else:
-            self.logs.append(f"✓ [SEMANTICS] Variable '{identifier_token.value}' is not previously declared.")
+            self.logs.append(f"[SUCCESS] [SEMANTICS] Variable '{identifier_token.value}' is not previously declared.")
 
-        # C++ Rule 2: Strict type checking (no implicit conversions)
+        # C++ Rule 2: Strict type checking 
         self.logs.append("[SEMANTICS] Checking Type Compatibility...")
         self.logs.append(f"[SEMANTICS] Variable '{identifier_token.value}' is declared as '{datatype_token.value}'.")
         self.logs.append(f"[SEMANTICS] Value is '{literal_token.value}' ({literal_token.type.name}).")
@@ -355,16 +336,16 @@ class SemanticAnalyzer:
         expected_type = self._get_expected_type(datatype_token)
         actual_type = self._get_actual_type(literal_token)
 
-        # C++ Rule: Strict type matching (no implicit conversions between incompatible types)
+        #Strict type matching (no implicit conversions between incompatible types)
         if expected_type != actual_type:
-            self.logs.append(f"❌ [SEMANTICS] FATAL ERROR: Type mismatch detected!")
+            self.logs.append(f"[ERROR] [SEMANTICS] FATAL ERROR: Type mismatch detected!")
             self.logs.append(f"   Expected: {expected_type}, but got: {actual_type}")
             self.logs.append(f"   Variable '{identifier_token.value}' is declared as '{datatype_token.value}', but value '{literal_token.value}' is {actual_type}.")
             self.logs.append("[SEMANTICS] C++ Rule: No implicit type conversion allowed between incompatible types.")
             self.logs.append("[SEMANTICS] Recovery Strategy: Compiler will discard assignment to prevent memory corruption.")
             self.is_valid = False
         else:
-            self.logs.append(f"✓ [SEMANTICS] Types match! Expected {expected_type}, got {actual_type}.")
+            self.logs.append(f"[SUCCESS] [SEMANTICS] Types match! Expected {expected_type}, got {actual_type}.")
             self.logs.append("[SEMANTICS] C++ Rule: Type compatibility verified - no type coercion needed.")
 
             # Bind to symbol table
@@ -375,8 +356,8 @@ class SemanticAnalyzer:
                 'Level': str(self.current_level),
                 'Offset': str(self.current_offset)
             }
-            self.logs.append(f"✓ [SEMANTICS] Variable '{identifier_token.value}' successfully bound to symbol table.")
-            self.logs.append("✓ Semantic Analysis Complete.")
+            self.logs.append(f"[SUCCESS] [SEMANTICS] Variable '{identifier_token.value}' successfully bound to symbol table.")
+            self.logs.append("[SUCCESS] Semantic Analysis Complete.")
             self.is_valid = True
 
         return self.is_valid, self.logs, self.symbol_table
@@ -396,9 +377,7 @@ class SemanticAnalyzer:
         if literal_token.type == TokenType.STRING_LITERAL:
             return "STRING"
         elif literal_token.type == TokenType.NUMERIC_LITERAL:
-            # C++ Rule: Strict distinction between int and float
-            # - If literal has decimal point -> FLOAT (e.g., 1.0, 3.14)
-            # - If literal has no decimal point -> INTEGER (e.g., 1, 100)
+            # Distinguish between int and float based on decimal point
             if '.' in literal_token.value:
                 return "FLOAT"
             else:
@@ -408,11 +387,9 @@ class SemanticAnalyzer:
         elif literal_token.type == TokenType.NULL_LIGMA:
             return "NULL"
         return "UNKNOWN"
-
-
-# ============================================================================
+    
 # MULTILINE COMPILER - PROCESSES MULTIPLE STATEMENTS
-# ============================================================================
+
 class MultilineCompiler:
     def __init__(self, code: str):
         self.code = code
@@ -437,25 +414,25 @@ class MultilineCompiler:
             # Skip lines that are just braces
             if line == '{':
                 block_depth += 1
-                self.all_lexer_logs.append(f"📦 [BLOCK] Opening block (depth: {block_depth})")
-                self.all_parser_logs.append(f"📦 [BLOCK] Opening block (depth: {block_depth})")
-                self.all_semantic_logs.append(f"📦 [BLOCK] Opening block (depth: {block_depth})")
+                self.all_lexer_logs.append(f"[BLOCK] Opening block (depth: {block_depth})")
+                self.all_parser_logs.append(f"[BLOCK] Opening block (depth: {block_depth})")
+                self.all_semantic_logs.append(f"[BLOCK] Opening block (depth: {block_depth})")
                 continue
             elif line == '}':
                 block_depth -= 1
-                self.all_lexer_logs.append(f"📦 [BLOCK] Closing block (depth: {block_depth})")
-                self.all_parser_logs.append(f"📦 [BLOCK] Closing block (depth: {block_depth})")
-                self.all_semantic_logs.append(f"📦 [BLOCK] Closing block (depth: {block_depth})")
+                self.all_lexer_logs.append(f"[BLOCK] Closing block (depth: {block_depth})")
+                self.all_parser_logs.append(f"[BLOCK] Closing block (depth: {block_depth})")
+                self.all_semantic_logs.append(f"[BLOCK] Closing block (depth: {block_depth})")
                 continue
 
             # Process statement
             statement_num += 1
             indent = "  " * block_depth
 
-            # Add statement header (cleaner version)
-            self.all_lexer_logs.append(f"\n📝 Statement #{statement_num}: {line}")
-            self.all_parser_logs.append(f"\n📝 Statement #{statement_num}")
-            self.all_semantic_logs.append(f"\n📝 Statement #{statement_num}")
+            # Add statement header
+            self.all_lexer_logs.append(f"\n[STATEMENT #{statement_num}]: {line}")
+            self.all_parser_logs.append(f"\n[STATEMENT #{statement_num}]")
+            self.all_semantic_logs.append(f"\n[STATEMENT #{statement_num}]")
 
             # Lexical Analysis
             lexer = Lexer(line)
@@ -496,12 +473,11 @@ class MultilineCompiler:
             if not semantic_valid:
                 self.overall_success = False
 
-        # Final summary (cleaner version)
-        self.all_lexer_logs.append(f"\n✅ Compilation Complete: {statement_num} statement(s) processed")
-        self.all_parser_logs.append(f"\n✅ Compilation Complete: {statement_num} statement(s) processed")
-        self.all_semantic_logs.append(f"\n✅ Compilation Complete: {statement_num} statement(s) processed")
-        self.all_semantic_logs.append(f"📊 Total variables bound: {len(self.symbol_table)}")
-        self.all_semantic_logs.append(f"{'='*60}")
+        # Final summary 
+        self.all_lexer_logs.append(f"\n[COMPLETE] Compilation Complete: {statement_num} statement(s) processed")
+        self.all_parser_logs.append(f"\n[COMPLETE] Compilation Complete: {statement_num} statement(s) processed")
+        self.all_semantic_logs.append(f"\n[COMPLETE] Compilation Complete: {statement_num} statement(s) processed")
+        self.all_semantic_logs.append(f"[INFO] Total variables bound: {len(self.symbol_table)}")
 
         return (self.all_lexer_logs, self.all_parser_logs, self.all_semantic_logs,
                 self.symbol_table, self.overall_success, self.has_unknown_tokens)
@@ -509,24 +485,37 @@ class MultilineCompiler:
 
 
 
-# ============================================================================
-# STREAMLIT UI - THE FRONTEND
-# ============================================================================
+
+#THE FRONTEND
+
 def main():
     # Page configuration
     st.set_page_config(
         page_title="BRL Compiler",
-        page_icon="🧠",
         layout="wide"
     )
 
     # Custom CSS for better styling
     st.markdown("""
         <style>
+        :root {
+            --navy: #0f172a;
+            --slate: #1e293b;
+            --teal: #0f766e;
+            --cyan: #0891b2;
+            --amber: #d97706;
+            --mint: #10b981;
+            --surface: #ffffff;
+            --surface-soft: #f8fafc;
+            --text: #111827;
+            --text-muted: #cbd5e1;
+            --border: #e2e8f0;
+        }
+
         /* Main header styling */
         .main-header {
             text-align: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(120deg, var(--navy) 0%, var(--teal) 55%, var(--cyan) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -538,31 +527,35 @@ def main():
 
         .sub-header {
             text-align: center;
-            color: #6c757d;
+            color: var(--text-muted);
             font-size: 1.3em;
             margin-bottom: 2em;
             font-weight: 500;
+        }
+
+        .stApp {
+            background: linear-gradient(180deg, var(--navy) 0%, var(--slate) 45%, var(--teal) 100%);
         }
 
         /* Streamlit component styling */
         .stTextArea textarea {
             font-family: 'Courier New', monospace;
             font-size: 14px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid var(--border);
             border-radius: 10px;
             padding: 15px;
-            background-color: #f8f9fa;
-            color: #212529 !important;
+            background-color: var(--surface-soft);
+            color: var(--text) !important;
         }
 
         .stTextArea textarea:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+            border-color: var(--cyan);
+            box-shadow: 0 0 0 0.2rem rgba(8, 145, 178, 0.2);
         }
 
         /* Ensure placeholder text is visible */
         .stTextArea textarea::placeholder {
-            color: #6c757d;
+            color: var(--text-muted);
             opacity: 0.7;
         }
 
@@ -584,7 +577,7 @@ def main():
 
         /* Column headers */
         .stColumn h3 {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(120deg, var(--navy) 0%, var(--teal) 100%);
             color: white;
             padding: 12px 20px;
             border-radius: 10px 10px 0 0;
@@ -600,8 +593,29 @@ def main():
 
         /* Sidebar styling */
         [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(180deg, var(--navy) 0%, var(--slate) 45%, var(--teal) 100%);
             color: white;
+        }
+
+        [data-testid="stHeader"],
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"] {
+            background: linear-gradient(180deg, var(--navy) 0%, var(--slate) 45%, var(--teal) 100%) !important;
+            border-bottom: none !important;
+            box-shadow: none !important;
+        }
+
+        [data-testid="stDecoration"] {
+            height: 0 !important;
+            min-height: 0 !important;
+        }
+
+        [data-testid="stHeader"] button,
+        [data-testid="stHeader"] svg,
+        [data-testid="stToolbar"] button,
+        [data-testid="stToolbar"] svg {
+            color: #ffffff !important;
+            fill: #ffffff !important;
         }
 
         [data-testid="stSidebar"] .element-container {
@@ -616,7 +630,7 @@ def main():
         }
 
         [data-testid="stSidebar"] h3 {
-            color: #ffd700;
+            color: #fbbf24;
             font-weight: 600;
             margin-top: 15px;
         }
@@ -632,7 +646,7 @@ def main():
         /* Success/Error/Warning styling */
         .stSuccess {
             background-color: #d4edda !important;
-            border-left: 5px solid #28a745 !important;
+            border-left: 5px solid var(--mint) !important;
             border-radius: 5px !important;
             padding: 12px !important;
             color: #155724 !important;
@@ -640,7 +654,7 @@ def main():
 
         .stError {
             background-color: #f8d7da !important;
-            border-left: 5px solid #dc3545 !important;
+            border-left: 5px solid #b91c1c !important;
             border-radius: 5px !important;
             padding: 12px !important;
             color: #721c24 !important;
@@ -648,7 +662,7 @@ def main():
 
         .stWarning {
             background-color: #fff3cd !important;
-            border-left: 5px solid #ffc107 !important;
+            border-left: 5px solid var(--amber) !important;
             border-radius: 5px !important;
             padding: 12px !important;
             color: #856404 !important;
@@ -656,7 +670,7 @@ def main():
 
         .stInfo {
             background-color: #e8f4f8 !important;
-            border-left: 5px solid #17a2b8 !important;
+            border-left: 5px solid var(--cyan) !important;
             border-radius: 5px !important;
             padding: 12px !important;
             color: #0c5460 !important;
@@ -676,10 +690,10 @@ def main():
         /* Footer styling */
         .footer {
             text-align: center;
-            color: #888;
+            color: var(--text-muted);
             padding: 30px 20px;
             margin-top: 50px;
-            border-top: 2px solid #e0e0e0;
+            border-top: 2px solid var(--border);
         }
 
         /* Badge styling */
@@ -693,28 +707,28 @@ def main():
         }
 
         .badge-success {
-            background-color: #28a745;
+            background-color: #008000;
             color: white;
         }
 
         .badge-error {
-            background-color: #dc3545;
+            background-color: #b91c1c;
             color: white;
         }
 
         .badge-warning {
-            background-color: #ffc107;
+            background-color: var(--amber);
             color: #000;
         }
 
         /* Card styling for columns */
         .analysis-card {
-            background: white;
+            background: var(--surface);
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             padding: 20px;
             margin-bottom: 20px;
-            border: 1px solid #e0e0e0;
+            border: 1px solid var(--border);
         }
         </style>
     """, unsafe_allow_html=True)
@@ -722,40 +736,40 @@ def main():
     # Header with enhanced styling
     st.markdown("""
         <div style='text-align: center; padding: 20px 0;'>
-            <h1 class="main-header">🧠 BrainRotLanguage Compiler</h1>
-            <p class="sub-header">✨ No cap, fr fr - Your code is bussin! ✨</p>
+            <h1 class="main-header">BrainRotLanguage Compiler</h1>
+            <p class="sub-header">Structured Code Analysis and Compilation</p>
             <div style='margin: 20px 0;'>
-                <span class="badge badge-success">Lexical Analysis</span>
-                <span class="badge badge-success">Syntax Analysis</span>
-                <span class="badge badge-success">Semantic Analysis</span>
+                <span class="badge badge-success">Lexer Ready</span>
+                <span class="badge badge-success">Parser Ready</span>
+                <span class="badge badge-success">Semantic Checks Ready</span>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
     # Sidebar: Language Guide with enhanced design
     with st.sidebar:
-        st.markdown("<h2>📖 BRL Language Guide</h2>", unsafe_allow_html=True)
+        st.markdown("<h2>BRL Language Guide</h2>", unsafe_allow_html=True)
 
-        st.markdown("<h3>🔢 Data Types</h3>", unsafe_allow_html=True)
+        st.markdown("<h3>Data Types</h3>", unsafe_allow_html=True)
         st.code("sigma   → int\ngyatt   → string\nsmol    → float", language="text")
 
-        st.markdown("<h3>⚡ Keywords</h3>", unsafe_allow_html=True)
+        st.markdown("<h3>Keywords</h3>", unsafe_allow_html=True)
         st.code("rizz    → assignment (=)\nyap     → output\nmogging → input\nchad    → return", language="text")
 
-        st.markdown("<h3>🔄 Control Flow</h3>", unsafe_allow_html=True)
+        st.markdown("<h3>Control Flow</h3>", unsafe_allow_html=True)
         st.code("cap     → if\nflex    → else\ngrind   → while", language="text")
 
-        st.markdown("<h3>🧮 Logic Operators</h3>", unsafe_allow_html=True)
+        st.markdown("<h3>Logic Operators</h3>", unsafe_allow_html=True)
         st.code("bussin  → AND\npookie  → OR\ncringe  → NOT", language="text")
 
-        st.markdown("<h3>💎 Fixed Values</h3>", unsafe_allow_html=True)
+        st.markdown("<h3>Fixed Values</h3>", unsafe_allow_html=True)
         st.code("bet     → true\ncooked  → false\nligma   → null", language="text")
 
-        st.markdown("<h3>🎯 Delimiter</h3>", unsafe_allow_html=True)
+        st.markdown("<h3>Delimiter</h3>", unsafe_allow_html=True)
         st.code("!   → end of statement", language="text")
 
         st.divider()
-        st.markdown("<h3>📝 Example Code</h3>", unsafe_allow_html=True)
+        st.markdown("<h3>Example Code</h3>", unsafe_allow_html=True)
         st.code("""sigma points rizz 100!
 smol health rizz 95.5!
 {
@@ -765,8 +779,8 @@ sigma ammo rizz 30!
 
     # Main Input with enhanced design
     st.markdown("---")
-    st.markdown("<h2 style='text-align: center; color: #667eea;'>✍️ Enter Your BRL Code</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #6c757d; margin-bottom: 20px;'>Write your BrainRotLanguage code below and hit compile!</p>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #0f766e;'>Enter Your BRL Code</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #cbd5e1; margin-bottom: 20px;'>Write your BrainRotLanguage code below and hit compile!</p>", unsafe_allow_html=True)
 
     code_input = st.text_area(
         "Code Input",
@@ -784,17 +798,17 @@ sigma ammo rizz 30!
     # Compile button with enhanced styling
     col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
     with col_btn2:
-        compile_button = st.button("🚀 COMPILE CODE", type="primary", use_container_width=True)
+        compile_button = st.button("[COMPILE CODE]", type="primary", use_container_width=True)
 
     # Quick Tips Section
-    with st.expander("💡 Quick Tips & Examples"):
+    with st.expander("Quick Tips & Examples"):
         st.markdown("""
-        ### 🎯 How to Use:
+        ### How to Use:
         1. **Write your BRL code** in the text area above
         2. **Click the "COMPILE CODE" button**
         3. **Watch the magic happen!** See your code analyzed in real-time
 
-        ### ✨ Example Codes to Try:
+        ### Example Codes to Try:
 
         **Basic Variable Declaration:**
         ```
@@ -818,7 +832,7 @@ sigma ammo rizz 30!
         }
         ```
 
-        ### 🐛 Test Error Handling:
+        ### Test Error Handling:
 
         **Type Mismatch (Will Fail):**
         ```
@@ -843,34 +857,30 @@ sigma ammo rizz 30!
     # Welcome message when no compilation has happened yet
     if not compile_button:
         st.markdown("""
-            <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            <div style='background: linear-gradient(135deg, #008000 0%, #008000 100%);
                         padding: 40px; border-radius: 15px; text-align: center;
                         box-shadow: 0 8px 16px rgba(0,0,0,0.2); margin: 30px 0;'>
-                <h2 style='color: white; margin: 0; font-size: 2.5em;'>👋 Welcome to BRL Compiler!</h2>
+                <h2 style='color: white; margin: 0; font-size: 2.5em;'>Welcome to BRL Compiler</h2>
                 <p style='color: white; font-size: 1.2em; margin-top: 15px; line-height: 1.6;'>
-                    Ready to compile some bussin' code? 🔥<br>
-                    Write your BrainRotLanguage code above and click <strong>"COMPILE CODE"</strong> to get started!
+                    Ready to compile code?<br>
+                    Write your BrainRotLanguage source above and click <strong>"COMPILE CODE"</strong> to start analysis.
                 </p>
-                <div style='margin-top: 25px;'>
-                    <span class="badge badge-success">✓ Lexical Analysis Ready</span>
-                    <span class="badge badge-success">✓ Syntax Analysis Ready</span>
-                    <span class="badge badge-success">✓ Semantic Analysis Ready</span>
-                </div>
+                
             </div>
 
             <div style='text-align: center; margin-top: 30px;'>
-                <h3 style='color: #667eea;'>🌟 Features</h3>
+                <h3 style='color: #0f766e;'>Features</h3>
                 <div style='display: flex; justify-content: space-around; margin-top: 20px; flex-wrap: wrap;'>
                     <div style='flex: 1; min-width: 200px; padding: 20px;'>
-                        <h4>🔍 Lexical Analysis</h4>
+                        <h4>Lexical Analysis</h4>
                         <p>Tokenizes your code and identifies each component</p>
                     </div>
                     <div style='flex: 1; min-width: 200px; padding: 20px;'>
-                        <h4>⚙️ Syntax Analysis</h4>
+                        <h4>Syntax Analysis</h4>
                         <p>Validates grammar structure and statement rules</p>
                     </div>
                     <div style='flex: 1; min-width: 200px; padding: 20px;'>
-                        <h4>🧠 Semantic Analysis</h4>
+                        <h4>Semantic Analysis</h4>
                         <p>Checks types and binds variables to symbol table</p>
                     </div>
                 </div>
@@ -879,66 +889,66 @@ sigma ammo rizz 30!
 
     if compile_button and code_input:
         st.markdown("---")
-        st.markdown("<h2 style='text-align: center; color: #667eea; margin-bottom: 30px;'>📊 Compilation Results</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color: #0f766e; margin-bottom: 30px;'>Compilation Results</h2>", unsafe_allow_html=True)
 
         # Use MultilineCompiler for processing
         compiler = MultilineCompiler(code_input)
         lexer_logs, parser_logs, semantic_logs, symbol_table, overall_success, has_unknown = compiler.compile()
 
         # Quick Stats Dashboard
-        col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+        statement_count = len([line for line in code_input.split('\n') if line.strip() and line.strip() not in ['{', '}']])
 
-        with col_stat1:
-            st.markdown("""
-                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                            padding: 20px; border-radius: 10px; text-align: center;'>
-                    <h3 style='color: white; margin: 0; font-size: 2em;'>{}</h3>
-                    <p style='color: white; margin: 5px 0;'>Statements</p>
-                </div>
-            """.format(len([line for line in code_input.split('\n') if line.strip() and line.strip() not in ['{', '}']])), unsafe_allow_html=True)
+        status_value = "PASS" if overall_success else "FAIL"
+        status_accent = "#10b981" if overall_success else "#dc3545"
 
-        with col_stat2:
-            st.markdown("""
-                <div style='background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-                            padding: 20px; border-radius: 10px; text-align: center;'>
-                    <h3 style='color: white; margin: 0; font-size: 2em;'>{}</h3>
-                    <p style='color: white; margin: 5px 0;'>Variables</p>
-                </div>
-            """.format(len(symbol_table)), unsafe_allow_html=True)
+        token_value = "WARN" if has_unknown else "CLEAN"
+        token_accent = "#d97706" if has_unknown else "#0891b2"
 
-        with col_stat3:
-            status_icon = "✅" if overall_success else "❌"
-            status_color = "#28a745" if overall_success else "#dc3545"
-            st.markdown("""
-                <div style='background: linear-gradient(135deg, {} 0%, {} 100%);
-                            padding: 20px; border-radius: 10px; text-align: center;'>
-                    <h3 style='color: white; margin: 0; font-size: 2em;'>{}</h3>
-                    <p style='color: white; margin: 5px 0;'>Status</p>
-                </div>
-            """.format(status_color, status_color if overall_success else "#c82333", status_icon), unsafe_allow_html=True)
-
-        with col_stat4:
-            error_icon = "⚠️" if has_unknown else "✓"
-            error_color = "#ffc107" if has_unknown else "#17a2b8"
-            st.markdown("""
-                <div style='background: linear-gradient(135deg, {} 0%, {} 100%);
-                            padding: 20px; border-radius: 10px; text-align: center;'>
-                    <h3 style='color: white; margin: 0; font-size: 2em;'>{}</h3>
-                    <p style='color: white; margin: 5px 0;'>Tokens</p>
-                </div>
-            """.format(error_color, error_color if has_unknown else "#138496", error_icon), unsafe_allow_html=True)
+        stats_html = (
+            "<div style='display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin:10px 0 6px 0;'>"
+            f"<div style='background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border:1px solid #0f766e;border-radius:12px;min-height:140px;width:290px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-shadow:0 8px 16px rgba(0,0,0,0.25);'><h3 style='color:#ffffff;margin:0;font-size:2em;line-height:1.1;'>{statement_count}</h3><p style='color:#cbd5e1;margin:10px 0 0 0;font-size:1.2em;'>Statements</p></div>"
+            f"<div style='background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border:1px solid #10b981;border-radius:12px;min-height:140px;width:290px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-shadow:0 8px 16px rgba(0,0,0,0.25);'><h3 style='color:#ffffff;margin:0;font-size:2em;line-height:1.1;'>{len(symbol_table)}</h3><p style='color:#cbd5e1;margin:10px 0 0 0;font-size:1.2em;'>Variables</p></div>"
+            f"<div style='background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border:1px solid {status_accent};border-radius:12px;min-height:140px;width:290px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-shadow:0 8px 16px rgba(0,0,0,0.25);'><h3 style='color:#ffffff;margin:0;font-size:2em;line-height:1.1;'>{status_value}</h3><p style='color:#cbd5e1;margin:10px 0 0 0;font-size:1.2em;'>Status</p></div>"
+            f"<div style='background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border:1px solid {token_accent};border-radius:12px;min-height:140px;width:290px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-shadow:0 8px 16px rgba(0,0,0,0.25);'><h3 style='color:#ffffff;margin:0;font-size:2em;line-height:1.1;'>{token_value}</h3><p style='color:#cbd5e1;margin:10px 0 0 0;font-size:1.2em;'>Tokens</p></div>"
+            "</div>"
+        )
+        st.markdown(stats_html, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
         # Use Streamlit tabs for analysis results
-        st.markdown("<h2 style='text-align: center; color: #667eea; margin: 20px 0;'>🔍 Analysis Results</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #6c757d; margin-bottom: 20px;'>Click on a tab to view the analysis details</p>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color: #0f766e; margin: 20px 0;'>Analysis Results</h2>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #cbd5e1; margin-bottom: 20px;'>Click on a tab to view the analysis details</p>", unsafe_allow_html=True)
 
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 Lexical Table", "🌳 Syntax Tree", "🧠 Semantic Analysis", "📋 Symbol Table"])
+        def render_log_row(log: str) -> None:
+            """Render compiler logs with a unified black background."""
+            border_color = "#475569"
+            if "[ERROR]" in log or "FATAL" in log or "ERROR" in log:
+                border_color = "#dc3545"
+            elif "[WARNING]" in log or "Unknown" in log:
+                border_color = "#d97706"
+            elif "[SUCCESS]" in log:
+                border_color = "#0f766e"
+            elif "[STATEMENT #" in log:
+                border_color = "#0f766e"
+            elif "[BLOCK]" in log or "[INFO]" in log:
+                border_color = "#0891b2"
+
+            safe_log = html.escape(log)
+            st.markdown(
+                (
+                    "<div style='background: #000000; color: #ffffff; padding: 8px 12px; "
+                    "border-radius: 6px; margin: 8px 0; font-family: monospace; "
+                    f"border-left: 4px solid {border_color};'>{safe_log}</div>"
+                ),
+                unsafe_allow_html=True,
+            )
+
+        tab1, tab2, tab3, tab4 = st.tabs(["Lexical Analysis", "Syntax Analysis", "Semantic Analysis", "Symbol Table"])
 
         with tab1:
             st.markdown("""
-                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                <div style='background: linear-gradient(135deg, #0f766e 0%, #0f766e 100%);
                             padding: 15px; border-radius: 10px 10px 0 0;'>
                     <h3 style='color: white; margin: 0; text-align: center;'>🔍 LEXICAL ANALYSIS</h3>
                 </div>
@@ -947,71 +957,44 @@ sigma ammo rizz 30!
                 for log in lexer_logs:
                     if not log.strip():
                         continue
-                    if "📝 Statement #" in log:
-                        st.markdown(f"<div style='background: #667eea; color: white; padding: 8px 12px; border-radius: 5px; margin: 10px 0; font-weight: 600; font-family: monospace;'>{log}</div>", unsafe_allow_html=True)
-                    elif "⚠️" in log or "Unknown" in log:
-                        st.warning(log)
-                    elif "✓" in log and ("Complete" in log or "Compilation" in log):
-                        st.success(log)
-                    elif "📦" in log:
-                        st.info(log)
-                    else:
-                        st.info(log)
+                    render_log_row(log)
 
         with tab2:
             st.markdown("""
-                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                <div style='background: linear-gradient(135deg, #0f766e 0%, #0f766e 100%);
                             padding: 15px; border-radius: 10px 10px 0 0;'>
-                    <h3 style='color: white; margin: 0; text-align: center;'>🌳 SYNTAX ANALYSIS</h3>
+                    <h3 style='color: white; margin: 0; text-align: center;'>SYNTAX ANALYSIS</h3>
                 </div>
             """, unsafe_allow_html=True)
             with st.container(height=400):
                 for log in parser_logs:
                     if not log.strip():
                         continue
-                    if "📝 Statement #" in log:
-                        st.markdown(f"<div style='background: #667eea; color: white; padding: 8px 12px; border-radius: 5px; margin: 10px 0; font-weight: 600; font-family: monospace;'>{log}</div>", unsafe_allow_html=True)
-                    elif "❌" in log or "ERROR" in log:
-                        st.error(log)
-                    elif "✓" in log and ("Complete" in log or "Compilation" in log):
-                        st.success(log)
-                    elif "📦" in log:
-                        st.info(log)
-                    else:
-                        st.info(log)
+                    render_log_row(log)
 
         with tab3:
             st.markdown("""
-                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                <div style='background: linear-gradient(135deg, #0f766e 0%, #0f766e 100%);
                             padding: 15px; border-radius: 10px 10px 0 0;'>
-                    <h3 style='color: white; margin: 0; text-align: center;'>🧠 SEMANTIC ANALYSIS</h3>
+                    <h3 style='color: white; margin: 0; text-align: center;'>SEMANTIC ANALYSIS</h3>
                 </div>
             """, unsafe_allow_html=True)
             with st.container(height=400):
                 for log in semantic_logs:
                     if not log.strip():
                         continue
-                    if "📝 Statement #" in log:
-                        st.markdown(f"<div style='background: #667eea; color: white; padding: 8px 12px; border-radius: 5px; margin: 10px 0; font-weight: 600; font-family: monospace;'>{log}</div>", unsafe_allow_html=True)
-                    elif "❌" in log or "FATAL" in log:
-                        st.error(log)
-                    elif "✓" in log and ("Complete" in log or "Compilation" in log):
-                        st.success(log)
-                    elif "📦" in log or "📊" in log:
-                        st.info(log)
-                    else:
-                        st.info(log)
+                    render_log_row(log)
 
         with tab4:
             st.markdown("""
-                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                <div style='background: linear-gradient(135deg, #0f766e 0%, #0f766e 100%);
                             padding: 15px; border-radius: 10px 10px 0 0;'>
-                    <h3 style='color: white; margin: 0; text-align: center;'>📋 SYMBOL TABLE</h3>
+                    <h3 style='color: white; margin: 0; text-align: center;'>SYMBOL TABLE</h3>
                 </div>
             """, unsafe_allow_html=True)
 
             if symbol_table:
-                st.markdown(f"<p style='text-align: center; color: #667eea; font-size: 18px; font-weight: 600; margin: 15px 0;'>✨ {len(symbol_table)} Variables Bound ✨</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align: center; color: #0f766e; font-size: 18px; font-weight: 600; margin: 15px 0;'>{len(symbol_table)} Variables Bound</p>", unsafe_allow_html=True)
                 df = pd.DataFrame.from_dict(symbol_table, orient='index')
                 df.index.name = 'Variable'
                 df.reset_index(inplace=True)
@@ -1027,20 +1010,20 @@ sigma ammo rizz 30!
                     height=350
                 )
             else:
-                st.info("📭 No variables bound yet. The symbol table will populate after successful compilation!")
+                st.info("No variables bound yet. The symbol table will populate after successful compilation.")
 
         # Overall Status with enhanced design
         st.markdown("---")
-        st.markdown("<h2 style='text-align: center; color: #667eea; margin: 30px 0;'>🎯 Compilation Status</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; color: #0f766e; margin: 30px 0;'>Compilation Status</h2>", unsafe_allow_html=True)
 
         if not has_unknown and overall_success:
             st.markdown("""
                 <div style='background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
                             padding: 30px; border-radius: 15px; text-align: center;
                             box-shadow: 0 8px 16px rgba(0,0,0,0.2);'>
-                    <h1 style='color: white; margin: 0; font-size: 2.5em;'>✅ COMPILATION SUCCESSFUL!</h1>
+                    <h1 style='color: white; margin: 0; font-size: 2.5em;'>COMPILATION SUCCESSFUL</h1>
                     <p style='color: white; font-size: 1.3em; margin-top: 10px;'>
-                        Your code is absolutely bussin', no cap! 🔥
+                        All analysis phases completed with no errors.
                     </p>
                 </div>
             """, unsafe_allow_html=True)
@@ -1049,9 +1032,9 @@ sigma ammo rizz 30!
                 <div style='background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
                             padding: 30px; border-radius: 15px; text-align: center;
                             box-shadow: 0 8px 16px rgba(0,0,0,0.2);'>
-                    <h1 style='color: white; margin: 0; font-size: 2.5em;'>⚠️ L + RATIO</h1>
+                    <h1 style='color: white; margin: 0; font-size: 2.5em;'>COMPILATION COMPLETED WITH WARNINGS</h1>
                     <p style='color: white; font-size: 1.3em; margin-top: 10px;'>
-                        Unknown tokens detected and skipped (Panic Mode Recovery)
+                        Unknown tokens were detected and skipped through panic-mode recovery.
                     </p>
                 </div>
             """, unsafe_allow_html=True)
@@ -1060,9 +1043,9 @@ sigma ammo rizz 30!
                 <div style='background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
                             padding: 30px; border-radius: 15px; text-align: center;
                             box-shadow: 0 8px 16px rgba(0,0,0,0.2);'>
-                    <h1 style='color: white; margin: 0; font-size: 2.5em;'>❌ COMPILATION ERRORS</h1>
+                    <h1 style='color: white; margin: 0; font-size: 2.5em;'>COMPILATION ERRORS</h1>
                     <p style='color: white; font-size: 1.3em; margin-top: 10px;'>
-                        Your code has issues, fam. Check the logs above! 💀
+                        Errors were found. Review the logs above for details.
                     </p>
                 </div>
             """, unsafe_allow_html=True)
@@ -1072,9 +1055,9 @@ sigma ammo rizz 30!
             <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                         padding: 40px; border-radius: 15px; text-align: center;
                         box-shadow: 0 8px 16px rgba(0,0,0,0.2); margin-top: 30px;'>
-                <h2 style='color: white; margin: 0; font-size: 2em;'>⚠️ Hold Up!</h2>
+                <h2 style='color: white; margin: 0; font-size: 2em;'>Input Required</h2>
                 <p style='color: white; font-size: 1.2em; margin-top: 10px;'>
-                    You gotta enter some code first! Don't leave me hanging! 💭
+                    Enter BRL source code before compiling.
                 </p>
             </div>
         """, unsafe_allow_html=True)
@@ -1083,28 +1066,26 @@ sigma ammo rizz 30!
     st.markdown("---")
     st.markdown("""
         <div class='footer'>
-            <h3 style='color: #667eea; margin-bottom: 15px;'>🚀 BrainRotLanguage Compiler</h3>
+            <h3 style='color: #0f766e; margin-bottom: 15px;'>BrainRotLanguage Compiler</h3>
             <p style='font-size: 16px; margin: 10px 0;'>
-                Made with 💀 for <strong>CS Programming Languages Final Project</strong>
+                Built for <strong>CS Programming Languages Final Project</strong>
             </p>
             <p style='font-size: 14px; color: #aaa; margin: 5px 0;'>
-                <em>Skibidi Compiler v2.0 - Now with multiline support!</em>
+                <em>Version 2.0 with multiline compilation support</em>
             </p>
             <p style='font-size: 14px; color: #aaa;'>
-                <em>It's giving main character energy ✨</em>
+                <em>Designed for readable diagnostics and fast feedback</em>
             </p>
             <div style='margin-top: 20px;'>
-                <span class="badge badge-success">✓ Lexer</span>
-                <span class="badge badge-success">✓ Parser</span>
-                <span class="badge badge-success">✓ Semantic Analyzer</span>
-                <span class="badge badge-warning">⚡ Panic Mode</span>
+                <span class="badge badge-success">Lexer</span>
+                <span class="badge badge-success">Parser</span>
+                <span class="badge badge-success">Semantic Analyzer</span>
+                <span class="badge badge-warning">Panic Mode</span>
             </div>
         </div>
     """, unsafe_allow_html=True)
+    
+# MAIN TO RUN
 
-
-# ============================================================================
-# RUN THE APP
-# ============================================================================
 if __name__ == "__main__":
     main()
